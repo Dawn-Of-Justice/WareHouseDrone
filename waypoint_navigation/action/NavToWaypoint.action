@@ -1,0 +1,6 @@
+geometry_msgs/Pose waypoint
+bool is_goal_point
+---
+float64 hov_time
+---
+geometry_msgs/PoseStamped current_waypoint

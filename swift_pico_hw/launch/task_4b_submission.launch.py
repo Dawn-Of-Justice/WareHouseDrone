@@ -11,7 +11,7 @@ def generate_launch_description():
             executable='usb_cam_node_exe',
             output='screen',
             parameters=[{
-                'video_device': '/dev/video4',
+                'video_device': '/dev/video2',
                 'image_width': 1920,
                 'image_height': 1080,
                 'pixel_format': 'mjpeg2rgb',

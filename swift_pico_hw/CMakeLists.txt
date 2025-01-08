@@ -13,30 +13,22 @@ find_package(geometry_msgs REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(waypoint_navigation REQUIRED)
 
-
-#add executables
-add_executable(arm_cpp src/arm.cpp)
-add_executable(pico_controller_cpp src/pico_controller.cpp)
-
-#add dependencies
-ament_target_dependencies(arm_cpp rclcpp rc_msgs)
-ament_target_dependencies(pico_controller_cpp rclcpp rc_msgs pid_msg geometry_msgs)
-
-# Install executables
-install(
-  TARGETS 
-  arm_cpp 
-  pico_controller_cpp
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
+# Install launch files.
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}/
 )
 
 #Install scripts
 install(PROGRAMS
   src/pico_controller.py
   src/arm.py
+  src/pico_client.py
+  src/pico_server.py
+  src/waypoint_service.py
   DESTINATION lib/${PROJECT_NAME}
 )
-
 
 ament_package()
