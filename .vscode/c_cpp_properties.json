@@ -6,28 +6,13 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
-        "/home/salo/pico_ws2/install/whycon/include/**",
-        "/home/salo/pico_ws2/install/rc_msgs/include/**",
-        "/home/salo/pico_ws2/install/pid_msg/include/**",
-        "/home/salo/pico_ws2/install/crsf_msgs/include/**",
-        "/home/salo/pico_ws/install/whycon/include/**",
-        "/home/salo/pico_ws/install/waypoint_navigation/include/**",
-        "/home/salo/pico_ws/install/swift_msgs/include/**",
-        "/home/salo/pico_ws/install/rotors_control/include/**",
-        "/home/salo/pico_ws/install/pid_msg/include/**",
-        "/home/salo/pico_ws/install/mav_system_msgs/include/**",
-        "/home/salo/pico_ws/install/mav_state_machine_msgs/include/**",
-        "/home/salo/pico_ws/install/mav_planning_msgs/include/**",
-        "/home/salo/pico_ws/install/mav_msgs/include/**",
-        "/opt/ros/humble/include/**",
-        "/home/salo/pico_ws2/src/whycon/include/**",
-        "/usr/include/**"
+        "${workspaceFolder}/**"
       ],
-      "name": "ROS",
-      "intelliSenseMode": "gcc-x64",
+      "name": "linux-gcc-x64",
+      "intelliSenseMode": "linux-gcc-x64",
       "compilerPath": "/usr/bin/gcc",
-      "cStandard": "gnu11",
-      "cppStandard": "c++14"
+      "cStandard": "${default}",
+      "cppStandard": "${default}"
     }
   ],
   "version": 4
