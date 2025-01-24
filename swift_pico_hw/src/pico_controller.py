@@ -5,7 +5,7 @@
 # Theme:            WareHouse Drone
 # Author List:      Salo E S, Govind S Sarath, Arjun G Ravi, Devanand A
 # Filename:         WD_1284_pico_controller.py
-# Functions:        __init__, whycon_callback, altitude_set_pid, pitch_set_pid, roll_set_pid, pid, main, send_request, _signal_handler, shutdown, publish_filtered_data
+# Functions:        __init__, whycon_callback, altitude_set_pid, pitch_set_pid, roll_set_pid, pid, main, send_request, shutdown, publish_filtered_data, is_drone_in_sphere, check_sphere_status
 # Global variables: MIN_ROLL, BASE_ROLL, MAX_ROLL, SUM_ERROR_ROLL_LIMIT, MIN_PITCH, BASE_PITCH, MAX_PITCH, SUM_ERROR_PITCH_LIMIT, MIN_THROTTLE, BASE_THROTTLE, MAX_THROTTLE, SUM_ERROR_THROTTLE_LIMIT, CMD
 '''
 
@@ -18,8 +18,7 @@ from geometry_msgs.msg import PoseArray
 from pid_msg.msg import PIDTune, PIDError
 import rclpy
 from rclpy.node import Node
-import signal
-from threading import Event
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 MIN_ROLL = 1200
 BASE_ROLL = 1500
@@ -38,14 +37,12 @@ SUM_ERROR_THROTTLE_LIMIT = 5000
 
 CMD = [[], [], []]
 
-
 class Swift_Pico(Node):
     def __init__(self):
         """
-        
         purpose:
         ---
-        Initialize the node and the controller
+        Initialize the node and the controller with sphere tracking capabilities
 
         Input Arguments:
         ---
@@ -58,15 +55,26 @@ class Swift_Pico(Node):
         Example call:
         ---
         Swift_Pico()
-        
         """
         super().__init__('pico_controller')  # initializing ros node with name pico_controller
         
-        # Add shutdown event to gracefully land the drone
-        self._shutdown_event = Event()
-
+        # Sphere tracking variables
+        self.time_inside_sphere = 0
+        self.max_time_inside_sphere = 0
+        self.point_in_sphere_start_time = None
+        self.duration = 0
+        self.dtime = 0
+        
         # Intializing the drone position
         self.drone_position = [0.0, 0.0, 0.0]
+        
+        self.pid_callback = ReentrantCallbackGroup()
+        
+        ##extra
+        self.reading_size = 5
+        self.throttle_readings = [0]*self.reading_size
+        self.index = 0
+        ##extra
 
         # Setpoint [x,y,z]
         self.setpoint = [0, 0, 26]  
@@ -77,20 +85,15 @@ class Swift_Pico(Node):
         self.cmd.rc_pitch = 1500
         self.cmd.rc_yaw = 1500
         self.cmd.rc_throttle = 1500
-
-        self.Kp = [24, 26.5, 13] # .01
-        self.Ki = [.115, .83, .050] # .001
-        self.Kd = [425, 425, 152] # .1
-
-        # [roll, pitch, throttle]
-        # self.Kp = [0, 0, 15] # .01
-        # self.Ki = [.0, .0, .001] # .001
-        # self.Kd = [0, 0, 152] # .1
+        
+        self.Kp = [23.6, 23.6, 14] # .01
+        self.Ki = [.115, .115, .060] # .001
+        self.Kd = [420, 420, 135.5] # .1
 
         # PID variables
         self.error = [0, 0, 0]
         self.prev_error = [0, 0, 0]
-        self.sum_error = [0, 0, 0]
+        self.sum_error = [-500, 0, 0]
         self.change_in_error = [0, 0, 0]
         
         # Value limits
@@ -100,7 +103,7 @@ class Swift_Pico(Node):
         # Error message
         self.pid_error = PIDError()
 
-        self.sample_time = 0.060  # in seconds
+        self.sample_time = 0.06 # in seconds
         
         # Publishing /drone_command, /pid_error
         self.command_pub = self.create_publisher(RCMessage, '/drone/rc_command', 10)
@@ -123,12 +126,69 @@ class Swift_Pico(Node):
         response = future.result()
         self.get_logger().info(response.data)
 
-        self.timer = self.create_timer(self.sample_time, self.pid)
-        
-        # Register signal handlers to ensure a clean shutdown
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        self.timer = self.create_timer(self.sample_time, self.pid, callback_group=self.pid_callback)
+    
+    def is_drone_in_sphere(self, radius=0.8):
+        """
+        purpose:
+        ---
+        Check if the drone is within a specified radius of the setpoint
 
+        Input Arguments:
+        ---
+        radius : float
+            Radius of the acceptance sphere around the setpoint (default: 0.8)
+
+        Returns:
+        ---
+        bool
+            True if drone is inside the sphere, False otherwise
+
+        Example call:
+        ---
+        is_drone_in_sphere(0.8)
+        """
+        return (
+            (self.drone_position[0] - self.setpoint[0]) ** 2 +
+            (self.drone_position[1] - self.setpoint[1]) ** 2 +
+            (self.drone_position[2] - self.setpoint[2]) ** 2
+        ) <= radius ** 2
+    
+    def check_sphere_status(self):
+        """
+        purpose:
+        ---
+        Update sphere tracking variables based on current drone position
+
+        Input Arguments:
+        ---
+        None
+
+        Returns:
+        ---
+        None
+
+        Example call:
+        ---
+        check_sphere_status()
+        """
+        drone_is_in_sphere = self.is_drone_in_sphere()
+        
+        if not drone_is_in_sphere and self.point_in_sphere_start_time is None:
+            pass
+        elif drone_is_in_sphere and self.point_in_sphere_start_time is None:
+            self.point_in_sphere_start_time = self.dtime
+            self.get_logger().info("Drone in sphere for 1st time")
+        elif drone_is_in_sphere and self.point_in_sphere_start_time is not None:
+            self.time_inside_sphere = self.dtime - self.point_in_sphere_start_time
+            self.get_logger().info("Drone in sphere")
+            self.get_logger().info(f"Time inside sphere: {self.time_inside_sphere}")
+        elif not drone_is_in_sphere and self.point_in_sphere_start_time is not None:
+            self.point_in_sphere_start_time = None
+            
+        if self.time_inside_sphere > self.max_time_inside_sphere:
+            self.max_time_inside_sphere = self.time_inside_sphere
+        
     def send_request(self):
         """
         purpose:
@@ -147,18 +207,15 @@ class Swift_Pico(Node):
         Example call:
         ---
         self.send_request()
-        
         """
         self.req.value = True
         return self.cli.call_async(self.req)
 
-
     def whycon_callback(self, msg):
         """
-
         purpose:
         ---
-        Callback function for whycon poses
+        Callback function for whycon poses and update sphere tracking
 
         Input Arguments:
         ---
@@ -172,15 +229,23 @@ class Swift_Pico(Node):
         Example call:
         ---
         self.whycon_callback(msg)
-
         """
         self.drone_position[0] = msg.poses[0].position.x
         self.drone_position[1] = msg.poses[0].position.y
-        self.drone_position[2] = msg.poses[0].position.z
+        ##original
+        #self.drone_position[2] = msg.poses[0].position.z
+        ##extra
+        self.throttle_readings[self.index] = msg.poses[0].position.z
+        self.index = (self.index + 1) % self.reading_size
+        self.drone_position[2] = sum(self.throttle_readings) / self.reading_size
+        ##extra
+        self.dtime = msg.header.stamp.sec
+        
+        # Update sphere tracking status
+        self.check_sphere_status()
         
     def altitude_set_pid(self, alt):
         """
-
         purpose:
         ---
         Set the PID values for altitude
@@ -197,7 +262,6 @@ class Swift_Pico(Node):
         Example call:
         ---
         self.altitude_set_pid(alt)
-
         """
         self.Kp[2] = alt.kp * 0.01
         self.Ki[2] = alt.ki * 0.001
@@ -221,7 +285,6 @@ class Swift_Pico(Node):
         Example call:
         ---
         self.pitch_set_pid(pitch)
-
         """
         self.Kp[1] = pitch.kp * 0.01
         self.Ki[1] = pitch.ki * 0.001
@@ -229,7 +292,6 @@ class Swift_Pico(Node):
 
     def roll_set_pid(self, roll):
         """
-
         purpose:
         ---
         Set the PID values for roll
@@ -246,7 +308,6 @@ class Swift_Pico(Node):
         Example call:
         ---
         self.roll_set_pid(roll)
-
         """
         self.Kp[0] = roll.kp * 0.01
         self.Ki[0] = roll.ki * 0.001
@@ -254,7 +315,6 @@ class Swift_Pico(Node):
         
     def publish_filtered_data(self, roll, pitch, throttle):
         """
-        
         purpose:
         ---
         Publish the filtered data to the drone
@@ -275,14 +335,11 @@ class Swift_Pico(Node):
         Example call:
         ---
         self.publish_filtered_data(roll, pitch, throttle)
-        
         """
-
         self.cmd.rc_throttle = int(throttle)
         self.cmd.rc_roll = int(roll)
         self.cmd.rc_pitch = int(pitch)
         self.cmd.rc_yaw = int(1500)
-
 
         # BUTTERWORTH FILTER low pass filter
         span = 15
@@ -326,10 +383,8 @@ class Swift_Pico(Node):
 
         self.command_pub.publish(self.cmd)
 
-
     def pid(self):
         """
-        
         purpose:
         ---
         PID controller for the drone to reach the setpoint in the arena
@@ -345,8 +400,8 @@ class Swift_Pico(Node):
         Example call:
         ---
         self.pid()
-        
         """
+        #print("Drone Position: ", self.drone_position)
         for i in range(3):
             self.error[i] = self.drone_position[i] - self.setpoint[i]
             self.change_in_error[i] = self.error[i] - self.prev_error[i]
@@ -387,136 +442,36 @@ class Swift_Pico(Node):
         rc_pitch = int(BASE_PITCH + pitch_output) 
         raw_throttle = int(BASE_THROTTLE + throttle_output)        
         
-        self.publish_filtered_data(roll = rc_roll,pitch = rc_pitch,throttle = raw_throttle)
+        self.publish_filtered_data(roll = rc_roll, pitch = rc_pitch, throttle = raw_throttle)
         self.pid_error_pub.publish(self.pid_error)
-
-    def _signal_handler(self, signum, frame):
-        """
-        
-        purpose:
-        ---
-        Signal handler to initiate shutdown sequence
-        
-        Input Arguments:
-        ---
-        signum : int
-            Signal number
-        frame : frame
-            Frame object
-        
-        Returns:
-        ---
-        None
-        
-        Example call:
-        ---
-        self._signal_handler(signum, frame)
-        
-        """
-        self.get_logger().info(f'Received signal {signum}, initiating shutdown...')
-        self._shutdown_event.set()
-
-    def shutdown(self):
-        """
-        
-        purpose:
-        ---
-        Safely land the drone by reducing throttle gradually
-        
-        Input Arguments:
-        ---
-        None
-        
-        Returns:
-        ---
-        bool
-            True if successful, False otherwise
-            
-        Example call:
-        ---
-        self.shutdown()
-        """
-        try:
-            # Maintain current roll and pitch, but slowly reduce throttle
-            self.cmd.rc_roll = BASE_ROLL
-            self.cmd.rc_pitch = BASE_PITCH
-            self.cmd.rc_yaw = BASE_ROLL
-            
-            current_throttle = self.cmd.rc_throttle
-            
-            # Reduce throttle gradually (step of 10 every 0.1 seconds)
-            while current_throttle > MIN_THROTTLE and not self._shutdown_event.is_set():
-                current_throttle -= 10
-                self.cmd.rc_throttle = current_throttle
-                self.command_pub.publish(self.cmd)
-                self.get_logger().info(f"Landing... Throttle: {current_throttle}")
-                
-                # Use asyncio.sleep instead of time.sleep to allow interruption
-                try:
-                    rclpy.sleep(0.1)  # Small delay between throttle reductions
-                except Exception:
-                    break
-            
-            # Final command to ensure minimum throttle
-            self.cmd.rc_throttle = MIN_THROTTLE
-            self.cmd.rc_roll = BASE_ROLL
-            self.cmd.rc_pitch = BASE_PITCH
-            self.cmd.rc_yaw = BASE_ROLL
-            
-            # Publish final command multiple times to ensure it gets through
-            for _ in range(5):
-                if self._shutdown_event.is_set():
-                    break
-                self.command_pub.publish(self.cmd)
-                try:
-                    rclpy.sleep(0.05)
-                except Exception:
-                    break
-            
-            self.get_logger().info("Landing complete")
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f"Error during shutdown: {str(e)}")
-            return False
-
 
 def main(args=None):
     """
-    
     purpose:
     ---
-    Main function to initialize the node and run the controller
-    
+    Main function to initialize and run the node
+
     Input Arguments:
     ---
     args : list
-        List of arguments
-    
+        Command line arguments (default: None)
+
     Returns:
     ---
     None
-    
+
     Example call:
     ---
     main()
-    
     """
     rclpy.init(args=args)
     swift_pico = Swift_Pico()
-    
+
     try:
-        while rclpy.ok() and not swift_pico._shutdown_event.is_set():
-            rclpy.spin_once(swift_pico, timeout_sec=0.1)
-    except Exception as e:
-        swift_pico.get_logger().error(f'Error during execution: {str(e)}')
+        rclpy.spin(swift_pico)
+    except KeyboardInterrupt:
+        swift_pico.get_logger().info('KeyboardInterrupt, shutting down.\n')
     finally:
-        # Always attempt to land safely
-        if not swift_pico._shutdown_event.is_set():  # Only if not already shutting down
-            swift_pico.get_logger().info('Initiating shutdown sequence...')
-            swift_pico.shutdown()
-        
-        # Cleanup
         swift_pico.destroy_node()
         rclpy.shutdown()
 

@@ -25,8 +25,6 @@ from geometry_msgs.msg import PoseArray
 from pid_msg.msg import PIDTune, PIDError
 from nav_msgs.msg import Odometry
 import numpy as np
-import signal
-from threading import Event
 
 MIN_ROLL = 1200
 BASE_ROLL = 1460
@@ -67,9 +65,6 @@ class WayPointServer(Node):
         """
         super().__init__("waypoint_server") # Initialize the node
         
-        # Add shutdown event to gracefully land the drone
-        self._shutdown_event = Event()
-        
         self.pid_callback_group = ReentrantCallbackGroup()
         self.action_callback_group = ReentrantCallbackGroup()
 
@@ -91,18 +86,18 @@ class WayPointServer(Node):
         self.cmd.rc_yaw = 1500
         self.cmd.rc_throttle = 1500
 
-        self.Kp = [0, 0, 0] # .01
-        self.Ki = [0, 0, 0] # .001
-        self.Kd = [0, 0, 0] # .1
+        # self.Kp = [0, 0, 14] # .01
+        # self.Ki = [0, 0, 0.060] # .001
+        # self.Kd = [0, 0, 135.5] # .1
 
-        # self.Kp = [24, 26.5, 13] # .01
-        # self.Ki = [.115, .83, .050] # .001
-        # self.Kd = [425, 425, 152] # .1
+        self.Kp = [23.6, 23.6, 14] # .01
+        self.Ki = [.115, .115, .060] # .001
+        self.Kd = [420, 420, 135.5] # .1
 
         # PID controller variables
         self.error = [0.0, 0.0, 0.0, 0.0]  # Current errors
         self.prev_error = [0.0, 0.0, 0.0, 0.0]  # Previous errors
-        self.sum_error = [0.0, 0.0, 0.0, 0.0]  # Sum of errors (for integral)
+        self.sum_error = [-1000, 0, 0.0, 0.0]  # Sum of errors (for integral)
         self.change_in_error = [0.0, 0.0, 0.0, 0.0]  # Change in error (for derivative)
 
         # Value limits
@@ -144,11 +139,7 @@ class WayPointServer(Node):
         response = future.result()
         self.get_logger().info(response.data)
 
-        self.timer = self.create_timer(self.sample_time, self.pid)
-        
-        # Register signal handlers to ensure a clean shutdown
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        self.timer = self.create_timer(self.sample_time, self.pid, callback_group=self.pid_callback_group)
     
     def send_request(self):
         """
@@ -457,7 +448,7 @@ class WayPointServer(Node):
         rc_roll = int(BASE_ROLL - roll_output)
         rc_pitch = int(BASE_PITCH + pitch_output) 
         raw_throttle = int(BASE_THROTTLE + throttle_output)     
-           
+        print(raw_throttle)
         self.publish_filtered_data(roll = rc_roll,pitch = rc_pitch,throttle = raw_throttle)
         self.pid_error_pub.publish(self.pid_error)
 
@@ -530,7 +521,7 @@ class WayPointServer(Node):
                     break
             else:
                 # For intermediate points, just need to reach the sphere once
-                if self.is_drone_in_sphere(self.drone_position, goal_handle, 1.4):
+                if self.is_drone_in_sphere(self.drone_position, goal_handle, 0.8):
                     break
         
         # Send success message to client
@@ -569,102 +560,12 @@ class WayPointServer(Node):
             + (drone_pos[2] - sphere_center.request.waypoint.position.z) ** 2
         ) <= radius**2
 
-    def _signal_handler(self, signum, frame):
-        """
-        
-        purpose:
-        ---
-        Signal handler to initiate shutdown sequence
-        
-        Input Arguments:
-        ---
-        signum : int
-            Signal number
-        frame : frame
-            Frame object
-        
-        Returns:
-        ---
-        None
-        
-        Example call:
-        ---
-        self._signal_handler(signum, frame)
-        
-        """
-        self.get_logger().info(f'Received signal {signum}, initiating shutdown...')
-        self._shutdown_event.set()
-
-    def shutdown(self):
-        """
-        
-        purpose:
-        ---
-        Safely land the drone by reducing throttle gradually
-        
-        Input Arguments:
-        ---
-        None
-        
-        Returns:
-        ---
-        bool
-            True if successful, False otherwise
-            
-        Example call:
-        ---
-        self.shutdown()
-        """
-        try:
-            # Maintain current roll and pitch, but slowly reduce throttle
-            self.cmd.rc_roll = BASE_ROLL
-            self.cmd.rc_pitch = BASE_PITCH
-            self.cmd.rc_yaw = BASE_ROLL
-            
-            current_throttle = self.cmd.rc_throttle
-            
-            # Reduce throttle gradually (step of 10 every 0.1 seconds)
-            while current_throttle > MIN_THROTTLE and not self._shutdown_event.is_set():
-                current_throttle -= 10
-                self.cmd.rc_throttle = current_throttle
-                self.command_pub.publish(self.cmd)
-                self.get_logger().info(f"Landing... Throttle: {current_throttle}")
-                
-                # Use asyncio.sleep instead of time.sleep to allow interruption
-                try:
-                    rclpy.sleep(0.1)  # Small delay between throttle reductions
-                except Exception:
-                    break
-            
-            # Final command to ensure minimum throttle
-            self.cmd.rc_throttle = MIN_THROTTLE
-            self.cmd.rc_roll = BASE_ROLL
-            self.cmd.rc_pitch = BASE_PITCH
-            self.cmd.rc_yaw = BASE_ROLL
-            
-            # Publish final command multiple times to ensure it gets through
-            for _ in range(5):
-                if self._shutdown_event.is_set():
-                    break
-                self.command_pub.publish(self.cmd)
-                try:
-                    rclpy.sleep(0.05)
-                except Exception:
-                    break
-            
-            self.get_logger().info("Landing complete")
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f"Error during shutdown: {str(e)}")
-            return False
-        
         
 def main(args=None):
     """
     purpose:
     ---
-    Initialize ROS2 node, create WayPointServer, and spin the MultiThreadedExecutor with proper shutdown handling
+    Initialize ROS2 node, create WayPointServer, and spin the MultiThreadedExecutor
 
     Input Arguments:
     ---
@@ -679,55 +580,19 @@ def main(args=None):
     ---
     main()
     """
+        
     rclpy.init(args=args)
     waypoint_server = WayPointServer()
     executor = MultiThreadedExecutor()
     executor.add_node(waypoint_server)
 
-    # Create a future to track shutdown completion
-    shutdown_complete = executor.create_task(waypoint_server._shutdown_event.wait())
-    
     try:
-        while rclpy.ok():
-            # Check if shutdown was requested
-            if waypoint_server._shutdown_event.is_set():
-                break
-                
-            # Spin the executor with a timeout
-            executor.spin_once(timeout_sec=0.1)
-            
+        executor.spin()
     except KeyboardInterrupt:
-        waypoint_server.get_logger().info("KeyboardInterrupt received, initiating shutdown sequence...")
-    except Exception as e:
-        waypoint_server.get_logger().error(f"Error during execution: {str(e)}")
+        waypoint_server.get_logger().info("KeyboardInterrupt, shutting down.\n")
     finally:
-        try:
-            # Only attempt shutdown if not already in progress
-            if not waypoint_server._shutdown_event.is_set():
-                waypoint_server.get_logger().info("Starting shutdown sequence...")
-                waypoint_server.shutdown()
-                
-                # Give shutdown some time to complete
-                try:
-                    executor.spin_until_future_complete(
-                        shutdown_complete,
-                        timeout_sec=5.0  # Adjust timeout as needed
-                    )
-                except Exception as e:
-                    waypoint_server.get_logger().error(f"Error during shutdown: {str(e)}")
-            
-            # Cleanup
-            executor.shutdown()
-            waypoint_server.destroy_node()
-            rclpy.shutdown()
-            
-        except Exception as e:
-            print(f"Error during cleanup: {str(e)}")
-            # Force shutdown if cleanup fails
-            try:
-                rclpy.shutdown()
-            except Exception:
-                pass
+        waypoint_server.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
