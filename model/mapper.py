@@ -20,7 +20,7 @@ with open('output.csv', 'w', newline='') as csv_file:
     
     # Write data rows
     for point, coords in arena_data.items():
-        if point.startswith('A') or point.startswith('Q') or point.endswith('1') or point.endswith('17'):
+        if point.startswith('A') or point.startswith('Q') or (point.endswith('1') and not point.endswith('11') ) or point.endswith('17'):
             continue
         pixel = pixel_data.get(point, ["N/A", "N/A"])
         writer.writerow([point, *coords, pixel[0].strip(), pixel[1].strip()])
