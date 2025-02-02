@@ -2,12 +2,12 @@ import csv
 import json
 
 # Load JSON data
-with open('arena_mapper.json', 'r') as json_file:
+with open('/home/arjun/Desktop/GitHub/swift_pico_hw/model/arena_mapper.json', 'r') as json_file:
     arena_data = json.load(json_file)
 
 # Load TXT data
 pixel_data = {}
-with open('pixel_values.txt', 'r') as txt_file:
+with open('/home/arjun/Desktop/GitHub/swift_pico_hw/model/pixel_values.txt', 'r') as txt_file:
     for line in txt_file:
         key, value = line.split(':')
         pixel_data[key.strip()] = value.strip().strip('()').split(',')
