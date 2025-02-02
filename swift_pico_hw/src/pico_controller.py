@@ -86,9 +86,9 @@ class Swift_Pico(Node):
         self.cmd.rc_yaw = 1500
         self.cmd.rc_throttle = 1500
         
-        self.Kp = [23.6, 23.6, 14] # .01
-        self.Ki = [.115, .115, .060] # .001
-        self.Kd = [420, 420, 135.5] # .1
+        self.Kp = [0, 0, 14] # .01
+        self.Ki = [0, 0, .060] # .001
+        self.Kd = [0, 0, 135.5] # .1
 
         # PID variables
         self.error = [0, 0, 0]
@@ -289,6 +289,10 @@ class Swift_Pico(Node):
         self.Kp[1] = pitch.kp * 0.01
         self.Ki[1] = pitch.ki * 0.001
         self.Kd[1] = pitch.kd * 0.1
+        
+        self.Kp[0] = pitch.kp * 0.01
+        self.Ki[0] = pitch.ki * 0.001
+        self.Kd[0] = pitch.kd * 0.1
 
     def roll_set_pid(self, roll):
         """
@@ -312,6 +316,10 @@ class Swift_Pico(Node):
         self.Kp[0] = roll.kp * 0.01
         self.Ki[0] = roll.ki * 0.001
         self.Kd[0] = roll.kd * 0.1
+        
+        self.Kp[1] = roll.kp * 0.01
+        self.Ki[1] = roll.ki * 0.001
+        self.Kd[1] = roll.kd * 0.1
         
     def publish_filtered_data(self, roll, pitch, throttle):
         """
