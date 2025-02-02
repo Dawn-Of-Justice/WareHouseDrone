@@ -13,7 +13,7 @@ with open('/home/arjun/Desktop/GitHub/swift_pico_hw/model/pixel_values.txt', 'r'
         pixel_data[key.strip()] = value.strip().strip('()').split(',')
 
 # Create CSV and ignore points with A/Q and 1/17
-with open('output.csv', 'w', newline='') as csv_file:
+with open('model/output.csv', 'w', newline='') as csv_file:
     writer = csv.writer(csv_file)
     # Write header
     writer.writerow(['Point', 'X', 'Y', 'Z', 'PixelX', 'PixelY'])
