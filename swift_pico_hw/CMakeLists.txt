@@ -25,9 +25,10 @@ install(DIRECTORY
 install(PROGRAMS
   src/pico_controller.py
   src/arm.py
-  src/pico_client.py
-  src/pico_server.py
+  src/pico_client_5.py
+  src/pico_server_5.py
   src/waypoint_service.py
+  src/path_planning_service.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

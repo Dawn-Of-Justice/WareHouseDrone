@@ -4,11 +4,14 @@
 # Team ID:          1284
 # Theme:            WareHouse Drone
 # Author List:      Salo E S, Govind S Sarath, Arjun G Ravi, Devanand A
-# Filename:         WD_1284_pico_server_2b.py
+# Filename:         WD_1284_pico_server_5.py
 # Functions:        __init__, butter_lowpass, filter_throttle, disarm, arm, whycon_callback, altitude_set_pid, roll_set_pid, pitch_set_pid, yaw_set_pid, pid, execute_callback, is_drone_in_sphere, main
 # Global variables: None
 """
 
+from functools import partial
+import time
+import rclpy
 import rclpy
 import numpy as np
 import scipy.signal
@@ -88,13 +91,14 @@ class WayPointServer(Node):
         self.cmd.rc_throttle = 1500
 
         # [roll, pitch, throttle]
-        self.Kp = [0, 0, 14] # .01
-        self.Ki = [0, 0, .060] # .001
-        self.Kd = [0, 0, 135.5] # .1
+        self.Kp = [23.54, 26.15, 13.98] # .01
+        self.Ki = [.057, .069, .058] # .001
+        self.Kd = [402.2, 402.2, 147.9] # .1
+        
 
         self.error = [0, 0, 0]
         self.prev_error = [0, 0, 0]
-        self.sum_error = [-500, 0, 0]
+        self.sum_error = [-1000, 0, 0]
         self.change_in_error = [0, 0, 0]
         
         # Value limits
@@ -138,6 +142,9 @@ class WayPointServer(Node):
             self.sample_time, self.pid, callback_group=self.pid_callback_group
         )
         
+        
+        self.landing_requested = False
+        
     def whycon_callback(self, msg):
         """
         purpose:
@@ -159,17 +166,9 @@ class WayPointServer(Node):
         """
         self.drone_position[0] = msg.poses[0].position.x
         self.drone_position[1] = msg.poses[0].position.y
-        ##original
-        #self.drone_position[2] = msg.poses[0].position.z
-        ##extra
-        self.throttle_readings[self.index] = msg.poses[0].position.z
-        self.index = (self.index + 1) % self.reading_size
-        self.drone_position[2] = sum(self.throttle_readings) / self.reading_size
-        ##extra
+        self.drone_position[2] = msg.poses[0].position.z
         self.dtime = msg.header.stamp.sec
         
-        # Update sphere tracking status
-        self.check_sphere_status()
         
     def altitude_set_pid(self, alt):
         """
@@ -216,10 +215,6 @@ class WayPointServer(Node):
         self.Kp[1] = pitch.kp * 0.01
         self.Ki[1] = pitch.ki * 0.001
         self.Kd[1] = pitch.kd * 0.1
-        
-        self.Kp[0] = pitch.kp * 0.01
-        self.Ki[0] = pitch.ki * 0.001
-        self.Kd[0] = pitch.kd * 0.1
 
     def roll_set_pid(self, roll):
         """
@@ -243,10 +238,6 @@ class WayPointServer(Node):
         self.Kp[0] = roll.kp * 0.01
         self.Ki[0] = roll.ki * 0.001
         self.Kd[0] = roll.kd * 0.1
-        
-        self.Kp[1] = roll.kp * 0.01
-        self.Ki[1] = roll.ki * 0.001
-        self.Kd[1] = roll.kd * 0.1
     
     def send_request(self):
         """
@@ -269,10 +260,80 @@ class WayPointServer(Node):
         """
         self.req.value = True
         return self.cli.call_async(self.req)
-   
+    
+    def publish_filtered_data(self, roll, pitch, throttle):
+        """
+        purpose:
+        ---
+        Publish the filtered data to the drone
+        
+        Input Arguments:
+        ---
+        roll : int
+            The roll value
+        pitch : int
+            The pitch value
+        throttle : int
+            The throttle value
+            
+        Returns:
+        ---
+        None
+        
+        Example call:
+        ---
+        self.publish_filtered_data(roll, pitch, throttle)
+        """
+        self.cmd.rc_throttle = int(throttle)
+        self.cmd.rc_roll = int(roll)
+        self.cmd.rc_pitch = int(pitch)
+        self.cmd.rc_yaw = int(1500)
+
+        # BUTTERWORTH FILTER low pass filter
+        span = 15
+        for index, val in enumerate([roll, pitch, throttle]):
+            CMD[index].append(val)
+            if len(CMD[index]) == span:
+                CMD[index].pop(0)
+            if len(CMD[index]) != span-1:
+                return
+            order = 3 # determining order 
+            fs = 30 # to keep in order same as hz topic runs
+            fc = 4 
+            nyq = 0.5 * fs
+            wc = fc / nyq
+            b, a = scipy.signal.butter(N=order, Wn=wc, btype='lowpass', analog=False, output='ba')
+            filtered_signal = scipy.signal.lfilter(b, a, CMD[index])
+            if index == 0:
+                rc_roll = int(filtered_signal[-1])
+                if rc_roll > MAX_ROLL:
+                    self.cmd.rc_roll = MAX_ROLL
+                elif rc_roll < MIN_ROLL:
+                    self.cmd.rc_roll = MIN_ROLL
+                else:
+                    self.cmd.rc_roll = rc_roll
+            elif index == 1:
+                rc_pitch = int(filtered_signal[-1])
+                if rc_pitch > MAX_PITCH:
+                    self.cmd.rc_pitch = MAX_PITCH
+                elif rc_pitch < MIN_PITCH:
+                    self.cmd.rc_pitch = MIN_PITCH
+                else:
+                    self.cmd.rc_pitch = rc_pitch
+            elif index == 2:
+                rc_throttle = int(filtered_signal[-1])
+                if rc_throttle > MAX_THROTTLE:
+                    self.cmd.rc_throttle = MAX_THROTTLE
+                elif rc_throttle < MIN_THROTTLE:
+                    self.cmd.rc_throttle = MIN_THROTTLE
+                else:
+                    self.cmd.rc_throttle = rc_throttle
+
+        self.command_pub.publish(self.cmd)
+        
     def pid(self):
         """
-        Purpose:
+        purpose:
         ---
         PID controller for the drone to reach the setpoint in the arena
 
@@ -288,74 +349,50 @@ class WayPointServer(Node):
         ---
         self.pid()
         """
-
-        actual_error = [0.0, 0.0, 0.0, 0.0]
-
-        actual_error = [0.0, 0.0, 0.0, 0.0]
-
-        for i in range(4):
-            actual_error[i] = self.drone_position[i] - self.setpoint[i]
-            if i == 2:
-                self.error[i] = (
-                    self.throttle_filter.filter_throttle(self.drone_position[i])
-                    - self.setpoint[i]
-                )
-            else:
-                self.error[i] = self.drone_position[i] - self.setpoint[i]
-            self.error_sum[i] = self.error_sum[i] + self.error[i]
-
-            # Apply integral limits
-            self.error_sum[i] = max(-self.integral_limits[i], min(self.integral_limits[i], self.error_sum[i]))
-
-            self.d_error[i] = self.error[i] - self.prev_error[i]
+        
+        for i in range(3):
+            self.error[i] = self.drone_position[i] - self.setpoint[i]
+            self.change_in_error[i] = self.error[i] - self.prev_error[i]
+            
+            # Add anti-windup
+            if i == 0:  # Roll
+                self.sum_error[i] = np.clip(self.sum_error[i] + self.error[i], -SUM_ERROR_ROLL_LIMIT, SUM_ERROR_ROLL_LIMIT)
+            elif i == 1:  # Pitch
+                self.sum_error[i] = np.clip(self.sum_error[i] + self.error[i], -SUM_ERROR_PITCH_LIMIT, SUM_ERROR_PITCH_LIMIT)
+            else:  # Throttle
+                self.sum_error[i] = np.clip(self.sum_error[i] + self.error[i], -SUM_ERROR_THROTTLE_LIMIT, SUM_ERROR_THROTTLE_LIMIT)
+                
             self.prev_error[i] = self.error[i]
-
-        self.pid_error.roll_error = actual_error[0]
-        self.pid_error.pitch_error = actual_error[1]
-        self.pid_error.throttle_error = actual_error[2]
-        self.pid_error.yaw_error = actual_error[3]
+            
+        self.pid_error.roll_error = self.error[0]
+        self.pid_error.pitch_error = self.error[1]
+        self.pid_error.throttle_error = self.error[2]
 
         # Calculate PID outputs
         roll_output = (
             self.Kp[0] * self.error[0]
-            - self.Ki[0] * self.error_sum[0]
-            + self.Kd[0] * self.d_error[0]
+            + self.sum_error[0] * self.Ki[0]
+            + self.Kd[0] * self.change_in_error[0]
         )
-
         pitch_output = (
             self.Kp[1] * self.error[1]
-            - self.Ki[1] * self.error_sum[1]
-            + self.Kd[1] * self.d_error[1]
+            + self.sum_error[1] * self.Ki[1]
+            + self.Kd[1] * self.change_in_error[1]
         )
-    
         throttle_output = (
             self.Kp[2] * self.error[2]
-            - self.Ki[2] * self.error_sum[2]
-            + self.Kd[2] * self.d_error[2]
-        )
-        
-        yaw_output = (
-            self.Kp[3] * self.error[3]
-            - self.Ki[3] * self.error_sum[3]
-            + self.Kd[3] * self.d_error[3]
+            + self.sum_error[2] * self.Ki[2]
+            + self.Kd[2] * self.change_in_error[2]
         )
 
         # Update commands
-        rc_roll = int(1500 - roll_output)
-        rc_pitch = int(1500 + pitch_output)
-        rc_throttle = int(1500 + throttle_output)
-        rc_yaw = int(1500 + yaw_output)
-
-        self.cmd.rc_roll = max(1000, min(2000, rc_roll))
-        self.cmd.rc_pitch = max(1000, min(2000, rc_pitch))
-        self.cmd.rc_throttle = max(1000, min(2000, rc_throttle))
-        self.cmd.rc_yaw = max(1000, min(2000, rc_yaw))
-
-        self._logger.info(f'Throttle: {self.cmd.rc_throttle}')
-
-        self.command_pub.publish(self.cmd)
+        rc_roll = int(BASE_ROLL - roll_output)
+        rc_pitch = int(BASE_PITCH + pitch_output) 
+        raw_throttle = int(BASE_THROTTLE + throttle_output)        
+        
+        self.publish_filtered_data(roll = rc_roll, pitch = rc_pitch, throttle = raw_throttle)
         self.pid_error_pub.publish(self.pid_error)
-
+         
     async def execute_callback(self, goal_handle):
         """
         Purpose:
@@ -377,65 +414,20 @@ class WayPointServer(Node):
         await self.execute_callback(goal_handle)
         """
 
-        if not self.is_stabilized:
-            self.get_logger().info("Waiting for drone to stabilize at home position...")
-
-            feedback_msg = NavToWaypoint.Feedback()
-
-            while not self.is_stabilized:
-                drone_in_home = self.is_drone_in_sphere(
-                    self.drone_position,
-                    type(
-                        "obj",
-                        (),
-                        {
-                            "request": type(
-                                "obj",
-                                (),
-                                {
-                                    "waypoint": type(
-                                        "obj",
-                                        (),
-                                        {
-                                            "position": type(
-                                                "obj",
-                                                (),
-                                                {"x": 0.0, "y": 0.0, "z": 27.0},
-                                            )
-                                        },
-                                    )
-                                },
-                            )
-                        },
-                    ),
-                    0.6,
-                )
-
-                if drone_in_home:
-                    if self.stabilization_start_time is None:
-                        self.stabilization_start_time = self.dtime
-                        self.get_logger().info(
-                            "Drone in home position, starting stabilization timer"
-                        )
-
-                    stabilization_time = self.dtime - self.stabilization_start_time
-                    self.get_logger().info(f"Stabilization time: {stabilization_time}")
-                    if stabilization_time >= 3:
-                        self.is_stabilized = True
-                        self.get_logger().info("Drone stabilized at home position!")
-                        break
-                else:
-                    self.stabilization_start_time = None
-
-                # Publish feedback during stabilization
-                feedback_msg.current_waypoint.pose.position.x = self.drone_position[0]
-                feedback_msg.current_waypoint.pose.position.y = self.drone_position[1]
-                feedback_msg.current_waypoint.pose.position.z = self.drone_position[2]
-                goal_handle.publish_feedback(feedback_msg)
-
+        # Store old setpoint
+        old_setpoint = self.setpoint.copy()
+        
+        # Update to new setpoint
         self.setpoint[0] = goal_handle.request.waypoint.position.x
         self.setpoint[1] = goal_handle.request.waypoint.position.y
         self.setpoint[2] = goal_handle.request.waypoint.position.z
+        
+        # Reset integral component when setpoint changes significantly
+        if (abs(old_setpoint[0] - self.setpoint[0]) > 3 or 
+            abs(old_setpoint[1] - self.setpoint[1]) > 3 or
+            abs(old_setpoint[2] - self.setpoint[2]) > 3):
+            self.sum_error = [0, 0, 0]
+            
         self.get_logger().info(f"New Waypoint Set: {self.setpoint}")
 
         self.max_time_inside_sphere = 0
@@ -451,15 +443,16 @@ class WayPointServer(Node):
             feedback_msg.current_waypoint.pose.position.z = self.drone_position[2]
             feedback_msg.current_waypoint.header.stamp.sec = self.max_time_inside_sphere
 
+                
             goal_handle.publish_feedback(feedback_msg)
 
             drone_is_in_sphere = self.is_drone_in_sphere(
-                self.drone_position, goal_handle, 0.6
+                self.drone_position, goal_handle, 1.0
             )
-
+                
             if not drone_is_in_sphere and self.point_in_sphere_start_time is None:
                 pass
-
+            
             elif (
                 drone_is_in_sphere
                 and self.point_in_sphere_start_time is None
@@ -467,6 +460,7 @@ class WayPointServer(Node):
             ):
                 self.point_in_sphere_start_time = self.dtime
                 self.get_logger().info("Drone in sphere for 1st time")
+                self.get_logger().info(f"Target setpoint: {self.setpoint}")
 
             elif (
                 drone_is_in_sphere
@@ -489,20 +483,26 @@ class WayPointServer(Node):
                 self.max_time_inside_sphere = self.time_inside_sphere
 
             if goal_handle.request.is_goal_point and self.max_time_inside_sphere >= 3:
-                print("Final goal reached!",goal_handle.request.is_goal_point)
+                self.get_logger().info("Goal reached! Initiating request for next point...")
+                if goal_handle.request.avada_kedavra == True:
+                    self.get_logger().info("Initiating landing sequence...")
+                    await self.land_safely()
+
                 break
             if goal_handle.request.is_goal_point:
-                print("Goal point reached, waiting for 3 seconds", color="blue")
+                self.get_logger().info("Goal point reached, waiting for 3 seconds")
+                pass
                 
             elif not goal_handle.request.is_goal_point and self.is_drone_in_sphere(
                 self.drone_position, goal_handle, 1.5
             ):
-                print("Waypoint reached, ready for next point", color="blue")
+                self.get_logger().info("Waypoint reached, ready for next point")
                 break
+            
 
         goal_handle.succeed()
         result = NavToWaypoint.Result()
-        result.hov_time = self.dtime - self.duration
+        result.hov_time = float(self.dtime - self.duration)
         return result
 
     def is_drone_in_sphere(self, drone_pos, sphere_center, radius):
@@ -532,48 +532,58 @@ class WayPointServer(Node):
         ---
         self.is_drone_in_sphere([1.0, 2.0, 3.0], goal_handle, 1.5)
         """
-
         return (
             (drone_pos[0] - sphere_center.request.waypoint.position.x) ** 2
             + (drone_pos[1] - sphere_center.request.waypoint.position.y) ** 2
             + (drone_pos[2] - sphere_center.request.waypoint.position.z) ** 2
         ) <= radius**2
-
-    def check_sphere_status(self):
+            
+    def waypoint_callback(self, request, response):
+        if hasattr(request, 'land_drone') and request.land_drone:
+            self.landing_requested = True
+            response.landing_complete = True
+            return response
+    
+    async def land_safely(self):
         """
-        purpose:
+        Purpose:
         ---
-        Update sphere tracking variables based on current drone position
-
+        Safely land the drone by disarming it after controlled descent.
+        
         Input Arguments:
         ---
         None
-
+        
         Returns:
         ---
         None
-
+        
         Example call:
         ---
-        check_sphere_status()
-        """
-        drone_is_in_sphere = self.is_drone_in_sphere()
+        await self.land_safely()
         
-        if not drone_is_in_sphere and self.point_in_sphere_start_time is None:
-            pass
-        elif drone_is_in_sphere and self.point_in_sphere_start_time is None:
-            self.point_in_sphere_start_time = self.dtime
-            self.get_logger().info("Drone in sphere for 1st time")
-        elif drone_is_in_sphere and self.point_in_sphere_start_time is not None:
-            self.time_inside_sphere = self.dtime - self.point_in_sphere_start_time
-            self.get_logger().info("Drone in sphere")
-            self.get_logger().info(f"Time inside sphere: {self.time_inside_sphere}")
-        elif not drone_is_in_sphere and self.point_in_sphere_start_time is not None:
-            self.point_in_sphere_start_time = None
+        """
+        self.get_logger().info("Beginning controlled descent...")
+        
+        initial_height = self.drone_position[2]
+        descent_rate = 0.5 
+        duration = 0.1  # 100ms between iterations
+        
+        current_z = initial_height
+        while current_z < 30.5:  # Disarm request will be sent when drone reaches the point 30.5
+            current_z += descent_rate * duration
+            self.setpoint[2] = current_z
             
-        if self.time_inside_sphere > self.max_time_inside_sphere:
-            self.max_time_inside_sphere = self.time_inside_sphere
-      
+            # Create an awaitable sleep using ROS 2's executor
+            future = rclpy.task.Future()
+            self.executor.create_task(partial(future.set_result, None))
+            time.sleep(duration)  # This will allow other callbacks to run
+            await future
+            
+        # Final disarm
+        self.get_logger().info("Landing complete, disarming...")
+        self.req.value = False
+        await self.cli.call_async(self.req)
 
 def main(args=None):
     """

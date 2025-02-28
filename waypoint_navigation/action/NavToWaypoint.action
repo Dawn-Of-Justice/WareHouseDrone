@@ -1,5 +1,6 @@
 geometry_msgs/Pose waypoint
 bool is_goal_point
+bool avada_kedavra
 ---
 float64 hov_time
 ---

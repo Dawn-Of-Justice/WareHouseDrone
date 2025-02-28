@@ -13,6 +13,7 @@
 import scipy.signal
 import numpy as np
 from rc_msgs.msg import RCMessage
+from crsf_msgs.msg import BatterySensor
 from rc_msgs.srv import CommandBool
 from geometry_msgs.msg import PoseArray
 from pid_msg.msg import PIDTune, PIDError
@@ -86,9 +87,17 @@ class Swift_Pico(Node):
         self.cmd.rc_yaw = 1500
         self.cmd.rc_throttle = 1500
         
-        self.Kp = [0, 0, 14] # .01
-        self.Ki = [0, 0, .060] # .001
-        self.Kd = [0, 0, 135.5] # .1
+        # self.Kp = [15, 14, 11.0] # .01
+        # self.Ki = [0.0, 0.0, .0] # .001
+        # self.Kd = [300, 300, 180] # .1
+
+        # self.Kp = [33, 33, 3] # .01
+        # self.Ki = [0.029, 0.029, .17] # .001
+        # self.Kd = [470, 470, 150]
+        
+        self.Kp = [24, 26.5, 14] # .01
+        self.Ki = [.115, .83, .060] # .001
+        self.Kd = [400, 400, 145] # .1
 
         # PID variables
         self.error = [0, 0, 0]
@@ -113,7 +122,8 @@ class Swift_Pico(Node):
         self.create_subscription(PoseArray, "/whycon/poses", self.whycon_callback, 1)
         self.create_subscription(PIDTune, "/throttle_pid", self.altitude_set_pid, 1)
         self.create_subscription(PIDTune, "/pitch_pid", self.pitch_set_pid, 1)
-        self.create_subscription(PIDTune, "/roll_pid", self.roll_set_pid, 1)        
+        self.create_subscription(PIDTune, "/roll_pid", self.roll_set_pid, 1)     
+        self.create_subscription(BatterySensor, "/drone/battery_info", self.battery_status_callback, 1)
 
         #arm/disarm service client
         self.cli = self.create_client(CommandBool, "/drone/cmd/arming")
@@ -128,6 +138,12 @@ class Swift_Pico(Node):
 
         self.timer = self.create_timer(self.sample_time, self.pid, callback_group=self.pid_callback)
     
+    def package_id_callback(self):
+        pass
+    
+    def battery_status_callback(self, msg):
+        self.get_logger().info(f"Battery Status: {msg},")
+         
     def is_drone_in_sphere(self, radius=0.8):
         """
         purpose:
@@ -232,13 +248,14 @@ class Swift_Pico(Node):
         """
         self.drone_position[0] = msg.poses[0].position.x
         self.drone_position[1] = msg.poses[0].position.y
-        ##original
-        #self.drone_position[2] = msg.poses[0].position.z
+        #original
+        self.drone_position[2] = msg.poses[0].position.z
         ##extra
-        self.throttle_readings[self.index] = msg.poses[0].position.z
-        self.index = (self.index + 1) % self.reading_size
-        self.drone_position[2] = sum(self.throttle_readings) / self.reading_size
-        ##extra
+        # self.throttle_readings[self.index] = msg.poses[0].position.z
+        # self.index = (self.index + 1) % self.reading_size
+        # self.drone_position[2] = sum(self.throttle_readings) / self.reading_size
+        # ##extra
+        
         self.dtime = msg.header.stamp.sec
         
         # Update sphere tracking status
@@ -290,9 +307,6 @@ class Swift_Pico(Node):
         self.Ki[1] = pitch.ki * 0.001
         self.Kd[1] = pitch.kd * 0.1
         
-        self.Kp[0] = pitch.kp * 0.01
-        self.Ki[0] = pitch.ki * 0.001
-        self.Kd[0] = pitch.kd * 0.1
 
     def roll_set_pid(self, roll):
         """
@@ -316,10 +330,6 @@ class Swift_Pico(Node):
         self.Kp[0] = roll.kp * 0.01
         self.Ki[0] = roll.ki * 0.001
         self.Kd[0] = roll.kd * 0.1
-        
-        self.Kp[1] = roll.kp * 0.01
-        self.Ki[1] = roll.ki * 0.001
-        self.Kd[1] = roll.kd * 0.1
         
     def publish_filtered_data(self, roll, pitch, throttle):
         """
