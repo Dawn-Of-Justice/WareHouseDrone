@@ -28,17 +28,17 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 MIN_ROLL = 1200
 BASE_ROLL = 1500
 MAX_ROLL = 1700
-SUM_ERROR_ROLL_LIMIT = 5000
+SUM_ERROR_ROLL_LIMIT = 2000
 
 MIN_PITCH = 1200
 BASE_PITCH = 1500
 MAX_PITCH = 1700
-SUM_ERROR_PITCH_LIMIT = 5000
+SUM_ERROR_PITCH_LIMIT = 2000
 
 MIN_THROTTLE = 1250
 BASE_THROTTLE = 1500
 MAX_THROTTLE = 2000
-SUM_ERROR_THROTTLE_LIMIT = 5000
+SUM_ERROR_THROTTLE_LIMIT = 2000
 
 CMD = [[], [], []]
 
@@ -93,7 +93,7 @@ class WayPointServer(Node):
         # [roll, pitch, throttle]
         self.Kp = [25.54, 26.15, 13.98] # .01
         self.Ki = [.057, .069, .058] # .001
-        self.Kd = [402.2, 402.2, 147.9] # .1
+        self.Kd = [403, 402.5, 147.9] # .1
         
 
         self.error = [0, 0, 0]
@@ -108,7 +108,7 @@ class WayPointServer(Node):
         # Error message
         self.pid_error = PIDError()
         
-        self.sample_time = 0.06 # in seconds
+        self.sample_time = 0.04 # in seconds
 
         self.command_pub = self.create_publisher(RCMessage, '/drone/rc_command', 10)
         self.pid_error_pub = self.create_publisher(PIDError, "/pid_error", 10)
@@ -413,7 +413,7 @@ class WayPointServer(Node):
         ---
         await self.execute_callback(goal_handle)
         """
-
+        
         # Store old setpoint
         old_setpoint = self.setpoint.copy()
         
@@ -447,7 +447,7 @@ class WayPointServer(Node):
             goal_handle.publish_feedback(feedback_msg)
 
             drone_is_in_sphere = self.is_drone_in_sphere(
-                self.drone_position, goal_handle, 1.0
+                self.drone_position, goal_handle, 0.8
             )
                 
             if not drone_is_in_sphere and self.point_in_sphere_start_time is None:
@@ -494,7 +494,7 @@ class WayPointServer(Node):
                 pass
                 
             elif not goal_handle.request.is_goal_point and self.is_drone_in_sphere(
-                self.drone_position, goal_handle, 1.5
+                self.drone_position, goal_handle, 1.8
             ):
                 self.get_logger().info("Waypoint reached, ready for next point")
                 break

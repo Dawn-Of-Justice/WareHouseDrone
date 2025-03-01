@@ -9,16 +9,13 @@
 # Global variables: None
 """
 
-import time
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from std_msgs.msg import String
 from waypoint_navigation.action import NavToWaypoint
 from waypoint_navigation.srv import GetWaypoints
 from collections import deque
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 
 class WayPointClient(Node):
@@ -44,11 +41,6 @@ class WayPointClient(Node):
         super().__init__("waypoint_client")
         self.goals = deque()
         self.callback_group = ReentrantCallbackGroup()
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-            depth=10,
-        )
         self.action_client = ActionClient(
             self,
             NavToWaypoint,
@@ -62,22 +54,13 @@ class WayPointClient(Node):
         
         # Used to keep track of how many goals to visit
         self.current_package = 0
-        self.package_index = None
-        self.create_subscription(
-            String,
-            "/package_id",
-            self.set_package_list,
-            qos_profile,
-            callback_group=self.callback_group,
-        )
+        self.package_index = [2,3]  # First package index is 2
 
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info("service not available, waiting again...")
 
         self.req = GetWaypoints.Request()
 
-    def set_package_list(self, msg):
-        self.package_index = [int(msg.data)]
         
     def send_goal(self, waypoint):
         """
@@ -224,7 +207,7 @@ Leave a small buffer for disarm
                 self.goals.append(waypoint)
                 self.get_logger().info(f"Waypoint received: {waypoint}")
 
-            self.get_logger().info(f"waypoints: {self.goals}")
+            self.get_logger().info(f"Waypoint received: {waypoint}")
             
             # Process the next goal if we're not currently executing
             if not self.is_executing:

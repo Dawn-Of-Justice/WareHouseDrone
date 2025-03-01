@@ -14,21 +14,15 @@ import random
 import cv2
 import heapq
 import numpy as np
-from collections import defaultdict, deque
-from typing import Set, Tuple, Optional, List, Dict, Any
+from typing import Set, Tuple, Optional, List
 from dataclasses import dataclass
-from functools import lru_cache
-import concurrent.futures
 from scipy.interpolate import splprep, splev
 import joblib
-from std_msgs.msg import String
 from waypoint_navigation.srv import GetWaypoints
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from rclpy.callback_groups import ReentrantCallbackGroup
-import pickle
 import matplotlib.pyplot as plt
 
 @dataclass
@@ -1165,38 +1159,7 @@ class WayPoints(Node):
     def __init__(self):
         super().__init__("waypoints_service")
         self.callback_group = ReentrantCallbackGroup()
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-            depth=10,
-        )
-        self.point_subscription = self.create_subscription(
-            String,
-            "/package_id",
-            self.goal_point_receiver,
-            qos_profile,
-            callback_group=self.callback_group,
-        )
-        self.goals = None
         self.current_waypoint = [500, 500]
-        self.srv = self.create_service(
-            GetWaypoints,
-            "waypoints",
-            self.waypoint_callback,
-            callback_group=self.callback_group,
-        )
-        self.obstacles = load_map("/home/salo/pico_ws2/2D_bit_map.png")
-        
-        # Create obstacle quadtree for faster collision checking
-        self.obstacle_quadtree = self._create_obstacle_quadtree()
-        
-        self.count = 0
-        self.path = []
-        
-        self.model_x = joblib.load("src/swift_pico_hw/src/linear_model_x.pkl")
-        self.model_y = joblib.load("src/swift_pico_hw/src/linear_model_y.pkl")
-        self.scalar = joblib.load("src/swift_pico_hw/src/scaler_inverse.pkl")
-        
         self.package_whycon_location = {
             0: [500, 500], # Origin
             1: [224, 256],
@@ -1206,6 +1169,32 @@ class WayPoints(Node):
             5: [554, 683],
             6: [835, 931]
         }
+        
+        self.goals = [
+                Point(self.package_whycon_location[2][0], 
+                      self.package_whycon_location[2][1]),
+                Point(self.package_whycon_location[3][0], 
+                      self.package_whycon_location[3][1]),
+                Point(self.package_whycon_location[0][0], 
+                      self.package_whycon_location[0][1]),  # Origin, used to come back
+            ]
+        
+        self.obstacles = load_map("/home/salo/pico_ws2/2D_bit_map.png")
+        self.obstacle_quadtree = self._create_obstacle_quadtree()
+        
+        self.count = 0
+        self.path = []
+        
+        self.model_x = joblib.load("src/swift_pico_hw/src/linear_model_x.pkl")
+        self.model_y = joblib.load("src/swift_pico_hw/src/linear_model_y.pkl")
+        self.scalar = joblib.load("src/swift_pico_hw/src/scaler_inverse.pkl")
+        
+        self.srv = self.create_service(
+            GetWaypoints,
+            "waypoints",
+            self.waypoint_callback,
+            callback_group=self.callback_group,
+        )
     
     def _create_obstacle_quadtree(self):
         """Create a quadtree data structure for efficient obstacle collision checking"""
@@ -1225,20 +1214,45 @@ class WayPoints(Node):
             
         return qt
     
-    def goal_point_receiver(self, msg):
-        try:
-            self.package_id = 4#int(msg.data)  # Used to get the goal points from the warehouse server
-            self.goals = [
-                Point(self.package_whycon_location[2][0], 
-                      self.package_whycon_location[2][1]),
-                Point(self.package_whycon_location[3][0], 
-                      self.package_whycon_location[3][1]),
-                Point(self.package_whycon_location[0][0], 
-                      self.package_whycon_location[0][1]),  # Origin, used to come back
-            ]
-            self.get_logger().debug(f"Received new goals: {self.goals}")
-        except Exception as e:
-            self.get_logger().error(f"Error processing point data: {str(e)}")
+    def interpolate_path(self, path, points_per_segment=5):
+        """
+        Add uniformly spaced points between waypoints to create a smoother path
+        
+        Args:
+            path: List of Points representing the planned path
+            points_per_segment: Number of points to add between each pair of waypoints
+            
+        Returns:
+            List of Points with added intermediate waypoints
+        """
+        if len(path) < 2:
+            return path
+            
+        smooth_path = [path[0]]  # Start with the first point
+        
+        for i in range(len(path) - 1):
+            start = path[i]
+            end = path[i+1]
+            
+            # Calculate segment vector
+            dx = end.x - start.x
+            dy = end.y - start.y
+            
+            # Add intermediate points
+            for j in range(1, points_per_segment):
+                t = j / points_per_segment
+                new_x = start.x + t * dx
+                new_y = start.y + t * dy
+                smooth_path.append(Point(new_x, new_y))
+                
+            # Add the endpoint (except for the last segment where we'll add it at the end)
+            if i < len(path) - 2:
+                smooth_path.append(end)
+        
+        # Add the final endpoint
+        smooth_path.append(path[-1])
+        
+        return smooth_path
 
     def pixel_to_whycon(self, imgx, imgy):
         points = np.array([[imgx, imgy]])
@@ -1275,8 +1289,10 @@ class WayPoints(Node):
         
         self.count += 1
         
-        # Prepare response
+        # Prepare response - handle interpolated path
         response.waypoints.poses = [Pose() for _ in range(len(self.path))]
+        
+        # Use batch conversion for efficiency with larger number of points
         for i, path_point in enumerate(self.path):
             point = self.pixel_to_whycon(path_point.x, path_point.y)
             response.waypoints.poses[i].position.x = float(point[0])
@@ -1308,8 +1324,7 @@ class WayPoints(Node):
                 # Different settings for parallel attempts
                 futures = [
                     executor.submit(self._try_rrt_planning, start, goal, 1.0, 5000, 20.0),  # Standard
-                    executor.submit(self._try_rrt_planning, start, goal, 0.5, 7000, 15.0),  # Aggressive
-                    executor.submit(self._try_direct_path, start, goal)  # Direct if possible
+                    executor.submit(self._try_rrt_planning, start, goal, 0.5, 7000, 15.0)  # Aggressive
                 ]
                 
                 # Use the first successful result
@@ -1321,7 +1336,11 @@ class WayPoints(Node):
                         break
 
         if self.path:
-            self.get_logger().info(f"Path found with {len(self.path)} waypoints")
+            self.get_logger().info(f"Raw path found with {len(self.path)} waypoints")
+            
+            # Add interpolated points for smoother movement
+            self.path = self.interpolate_path(self.path, points_per_segment=5)
+            self.get_logger().info(f"Interpolated path now has {len(self.path)} waypoints")
             
             # Visualize the path if requested
             if visualize:
@@ -1330,11 +1349,6 @@ class WayPoints(Node):
         else:
             self.get_logger().error("No path found with any method!")
             
-            # As absolute last resort, try a direct path with minimal steps
-            self.path = self._generate_safe_direct_path(start, goal)
-            if self.path:
-                self.get_logger().warn("Using emergency direct path (may be close to obstacles)")
-    
     def _try_rrt_planning(self, start, goal, min_clearance, max_iterations, step_size):
         """Try RRT planning with given parameters"""
         # Define a lightweight RRT planner inline rather than importing
@@ -1513,87 +1527,6 @@ class RRTPlanner:
         )
         return planner.plan()
     
-    def _try_direct_path(self, start, goal):
-        """Try a direct path if possible"""
-        # Check if direct path is collision-free
-        steps = max(int(math.sqrt((goal.x - start.x)**2 + (goal.y - start.y)**2) / 10), 10)
-        
-        for i in range(1, steps):
-            t = i / steps
-            x = start.x + t * (goal.x - start.x)
-            y = start.y + t * (goal.y - start.y)
-            point = Point(x, y)
-            
-            # Check with minimal clearance
-            x_rounded, y_rounded = int(round(x)), int(round(y))
-            for dx in range(-1, 2):
-                for dy in range(-1, 2):
-                    if (x_rounded + dx, y_rounded + dy) in self.obstacles:
-                        return None  # Collision found
-        
-        # If no collision, return direct path
-        return [start, goal]
-    
-    def _generate_safe_direct_path(self, start, goal):
-        """Generate a 'safe as possible' direct path as emergency fallback"""
-        # Vector from start to goal
-        dx = goal.x - start.x
-        dy = goal.y - start.y
-        distance = math.sqrt(dx*dx + dy*dy)
-        
-        # Normalize direction vector
-        if distance > 0:
-            dx /= distance
-            dy /= distance
-        
-        # Create waypoints with higher density in areas that need more precision
-        num_points = min(20, max(5, int(distance / 30)))
-        path = [start]
-        
-        for i in range(1, num_points):
-            t = i / num_points
-            x = start.x + t * (goal.x - start.x)
-            y = start.y + t * (goal.y - start.y)
-            
-            # Try to move away from obstacles if too close
-            min_safe_dist = 2.0  # Absolute minimum safety distance
-            closest_obstacle_dist = float('inf')
-            closest_obstacle = None
-            
-            # Find closest obstacle within search radius
-            search_radius = 10
-            x_rounded, y_rounded = int(round(x)), int(round(y))
-            
-            for ox in range(x_rounded - search_radius, x_rounded + search_radius + 1):
-                for oy in range(y_rounded - search_radius, y_rounded + search_radius + 1):
-                    if (ox, oy) in self.obstacles:
-                        obstacle_dist = math.sqrt((x - ox)**2 + (y - oy)**2)
-                        if obstacle_dist < closest_obstacle_dist:
-                            closest_obstacle_dist = obstacle_dist
-                            closest_obstacle = (ox, oy)
-            
-            # If too close to obstacle, adjust position
-            if closest_obstacle and closest_obstacle_dist < min_safe_dist:
-                # Vector from obstacle to point
-                ox, oy = closest_obstacle
-                push_dx = x - ox
-                push_dy = y - oy
-                push_dist = math.sqrt(push_dx*push_dx + push_dy*push_dy)
-                
-                if push_dist > 0:
-                    # Normalize and scale to ensure minimum distance
-                    push_dx = push_dx / push_dist * min_safe_dist
-                    push_dy = push_dy / push_dist * min_safe_dist
-                    
-                    # Apply push vector to move away from obstacle
-                    x = ox + push_dx
-                    y = oy + push_dy
-            
-            path.append(Point(x, y))
-        
-        path.append(goal)
-        return path
-
 def load_map(filepath: str) -> Set[Tuple[int, int]]:
     """Load map image and extract obstacle coordinates"""
     image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
