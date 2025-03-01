@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-
 """
-# Team ID:          1284
-# Theme:            WareHouse Drone
-# Author List:      Salo E S, Govind S Sarath, Arjun G Ravi, Devanand A
-# Filename:         WD_1284_pico_client_5.py
-# Functions:        __init__, send_goal, goal_response_callback, get_result_callback, handle_receive_goals_response, feedback_callback, process_nest_goal, send_request, receive_goals, main
-# Global variables: None
+* Team Id : 1284
+* Author List : Salo E S, Govind S Sarath, Arjun G Ravi, Devanand A
+* Filename: WD_1284_pico_client_5.py
+* Theme: WareHouse Drone
+* Functions: __init__, send_goal, goal_response_callback, get_result_callback, handle_receive_goals_response, feedback_callback, process_next_goal, send_request, receive_goals, main
+* Global Variables: None
 """
 
 import rclpy
@@ -18,26 +17,20 @@ from collections import deque
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 
+"""
+Class Name: WayPointClient
+Purpose: Manages the client node for sending and receiving waypoints in a warehouse drone system.
+"""
 class WayPointClient(Node):
 
+    """
+    * Function Name: __init__
+    * Input: None
+    * Output: None
+    * Logic: Initializes the ROS node, sets up action clients, service clients, and prepares for communication.
+    * Example Call: waypoint_client = WayPointClient()
+    """
     def __init__(self):
-        """
-        Purpose:
-        ---
-        Initialize the Client node
-
-        Input Arguments:
-        ---
-        None
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        WayPointClient()
-        """
         super().__init__("waypoint_client")
         self.goals = deque()
         self.callback_group = ReentrantCallbackGroup()
@@ -61,26 +54,24 @@ class WayPointClient(Node):
 
         self.req = GetWaypoints.Request()
 
+    """
+    * Function Name: set_package_list
+    * Input: msg (String) - Message containing package index.
+    * Output: None
+    * Logic: Sets the package index based on received message.
+    * Example Call: set_package_list(msg)
+    """
+    def set_package_list(self, msg):
+        self.package_index = [int(msg.data)]
         
+    """
+    * Function Name: send_goal
+    * Input: waypoint (list) - The waypoint to be sent as a goal.
+    * Output: None
+    * Logic: Sends a navigation goal to the action server.
+    * Example Call: self.send_goal([1,2,23])
+    """
     def send_goal(self, waypoint):
-        """
-        Purpose:
-        ---
-        Sends a navigation goal to the action server
-
-        Input Arguments:
-        ---
-        `waypoint` :  [ list ]
-            point to be sent
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        send_goal([1,2,23])
-        """
         if self.is_executing:
             self.goals.append(waypoint)
             self.get_logger().info(f"Added waypoint to queue: {waypoint}")
@@ -112,25 +103,14 @@ class WayPointClient(Node):
         )
         send_goal_future.add_done_callback(self.goal_response_callback)
 
+    """
+    * Function Name: goal_response_callback
+    * Input: future (Future) - Future object representing the response.
+    * Output: None
+    * Logic: Handles the server response after sending a goal.
+    * Example Call: Called internally by send_goal.
+    """
     def goal_response_callback(self, future):
-        """
-        Purpose:
-        ---
-        Callback after the server reaches the goal
-
-        Input Arguments:
-        ---
-        `future` :  [ rclpy.task.Future ]
-            The future object representing the result of the goal request.
-Leave a small buffer for disarm
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        send_goal_future.add_done_callback(self.goal_response_callback)
-        """
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().info("Goal rejected")
@@ -143,25 +123,14 @@ Leave a small buffer for disarm
         self.get_logger().info("Waiting for result...")
         self._get_result_future.add_done_callback(self.get_result_callback)
 
+    """
+    * Function Name: get_result_callback
+    * Input: future (Future) - Future object representing the result.
+    * Output: None
+    * Logic: Processes the result after reaching a goal and proceeds to the next goal if available.
+    * Example Call: Called internally by goal_response_callback.
+    """
     def get_result_callback(self, future):
-        """
-        Purpose:
-        ---
-        Callback function to receive the result of drone reaching the goal
-
-        Input Arguments:
-        ---
-        `future` :  [ rclpy.task.Future ]
-            The future object representing the result of the goal request.
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        self._get_result_future.add_done_callback(self.get_result_callback)
-        """
         result = future.result().result
         self.get_logger().info("Result: {0}".format(result.hov_time))
         self.is_executing = False
@@ -174,25 +143,14 @@ Leave a small buffer for disarm
 
         self.process_next_goal()
 
+    """
+    * Function Name: handle_receive_goals_response
+    * Input: future (Future) - Future object representing the request result.
+    * Output: None
+    * Logic: Processes received waypoints and initiates execution.
+    * Example Call: future.add_done_callback(self.handle_receive_goals_response)
+    """
     def handle_receive_goals_response(self, future):
-        """
-        Purpose:
-        ---
-        Callback function to process the path after receiving it from the path planning service
-
-        Input Arguments:
-        ---
-        `future` :  [ rclpy.task.Future ]
-            The future object representing the result of the request.
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        future.add_done_callback(self.handle_receive_goals_response)
-        """
         try:
             response = future.result()
             self.get_logger().info("Waypoints received by the action client")
@@ -218,25 +176,14 @@ Leave a small buffer for disarm
             self.is_executing = False
             self.process_next_goal()
 
+    """
+    * Function Name: feedback_callback
+    * Input: feedback_msg - Feedback message from the action server.
+    * Output: None
+    * Logic: Extracts and logs the current waypoint's position.
+    * Example Call: feedback_callback(feedback_msg)
+    """
     def feedback_callback(self, feedback_msg):
-        """
-        Purpose:
-        ---
-        Handles the feedback received from the action server during the execution of a goal. It extracts the current waypoint's position from the feedback message.
-
-        Input Arguments:
-        ---
-        `feedback_msg` :  [ < type of 1st input argument > ]
-            < one-line description of 1st input argument >
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        feedback_callback(feedback_msg)
-        """
         feedback = feedback_msg.feedback
         x = feedback.current_waypoint.pose.position.x
         y = feedback.current_waypoint.pose.position.y
@@ -244,24 +191,14 @@ Leave a small buffer for disarm
         t = feedback.current_waypoint.header.stamp.sec
 
 
+    """
+    * Function Name: process_next_goal
+    * Input: None
+    * Output: None
+    * Logic: Sends the next goal from the queue if available.
+    * Example Call: self.process_next_goal()
+    """
     def process_next_goal(self):
-        """
-        Purpose:
-        ---
-        Processes the next goal in the queue by sending it to the action server.
-
-        Input Arguments:
-        ---
-        None
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        process_next_goal()
-        """
         if self.goals:
             wayp = self.goals.popleft()
             self.send_goal(wayp)
@@ -269,70 +206,39 @@ Leave a small buffer for disarm
             self.get_logger().info("All waypoints have been reached successfully")
             self.is_executing = False
 
+    """
+    * Function Name: send_request
+    * Input: None
+    * Output: Future - Future object representing the service call.
+    * Logic: Sends a request to retrieve waypoints.
+    * Example Call: future = self.send_request()
+    """
     def send_request(self):
-        """
-        Purpose:
-        ---
-        Sends a service request to retrieve waypoints.
-
-        Input Arguments:
-        ---
-        None
-
-        Returns:
-        ---
-        `future` :  [ rclpy.task.Future ]
-            A future object that will hold the result of the asynchronous service call.
-
-        Example call:
-        ---
-        send_request()
-        """
         self.req.get_waypoints = True
         self.get_logger().info("Sending service request...")
         return self.cli.call_async(self.req)
 
+    """
+    * Function Name: receive_goals
+    * Input: None
+    * Output: None
+    * Logic: Requests path from the service and sets up a callback to handle the response.
+    * Example Call: self.receive_goals()
+    """
     def receive_goals(self):
-        """
-        Purpose:
-        ---
-        Requests path from the service and sets up a callback to handle the response.
-
-        Input Arguments:
-        ---Leave a small buffer for disarm
-        None
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        receive_goals()
-        """
         print("Requesting initial goals")
         future = self.send_request()
         future.add_done_callback(self.handle_receive_goals_response)
 
 
+"""
+* Function Name: main
+* Input: args (list, optional) - Command-line arguments for ROS 2.
+* Output: None
+* Logic: Initializes ROS client and starts the WayPointClient node.
+* Example Call: main()
+"""
 def main(args=None):
-    """
-    Purpose:
-    ---
-    Main function to initialize the node and run the client
-
-    Input Arguments:
-    ---
-    None
-
-    Returns:
-    ---
-    None
-
-    Example call:
-    ---
-    main()
-    """
     rclpy.init(args=args)
 
     waypoint_client = WayPointClient()
