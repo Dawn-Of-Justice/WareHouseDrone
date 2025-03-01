@@ -273,7 +273,7 @@ class QuadTree:
         - Sets up empty points list and children (initially None)
         Example Call: Called automatically when creating QuadTree instance
         """
-        self.boundary = (x, y, width, height)  # (x, y, width, height)
+        self.boundary = (x, y, width, height)
         self.max_points = max_points  # Maximum points before subdivision
         self.max_depth = max_depth  # Maximum depth of the tree
         self.depth = depth  # Current depth level
@@ -916,9 +916,9 @@ class EnhancedPathSmoother:
         # Otherwise use waypoint reduction with angle optimization
         return self._optimize_turning_angles(reduced_path)
 
-class ImprovedPathPlanner:
+class SAPPHIREPathPlanner:
     """
-    Class Name: ImprovedPathPlanner
+    Class Name: SAPPHIREPathPlanner(Smooth Adaptive Path Planning with Heuristic Intelligent Roadmap Exploration)
     Input: 
         start (Point) - Starting point
         goal (Point) - Goal point
@@ -932,7 +932,7 @@ class ImprovedPathPlanner:
     - Uses adaptive sampling strategies and efficient graph search
     - Prioritizes smoother paths with adequate obstacle clearance
     - Employs various optimizations for better path quality
-    Example Creation: planner = ImprovedPathPlanner(start, goal, obstacles, quadtree)
+    Example Creation: planner = SAPPHIREPathPlanner(start, goal, obstacles, quadtree)
     """
     def __init__(
         self, 
@@ -952,12 +952,12 @@ class ImprovedPathPlanner:
             obstacle_quadtree (Optional[QuadTree]) - Quadtree for efficient obstacle lookups
             max_iterations (int) - Maximum number of planning iterations
             min_clearance (float) - Minimum clearance from obstacles
-        Output: Initialized ImprovedPathPlanner instance
+        Output: Initialized SAPPHIREPathPlanner instance
         Logic:
         - Sets up start and goal nodes with initial costs
         - Initializes algorithm parameters and data structures
         - Creates critical samples in important areas of the search space
-        Example Call: Called automatically when creating ImprovedPathPlanner instance
+        Example Call: Called automatically when creating SAPPHIREPathPlanner instance
         """
         # Initialize start node with costs
         self.start = GraphNode(start)
@@ -1489,7 +1489,7 @@ class ImprovedPathPlanner:
         Logic:
         - Calculates the straight-line distance between two points
         - Uses the Euclidean distance formula: sqrt((x2-x1)² + (y2-y1)²)
-        Example Call: dist = ImprovedPathPlanner._distance(point1, point2)
+        Example Call: dist = SAPPHIREPathPlanner._distance(point1, point2)
         """
         return math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2)
 
@@ -2134,7 +2134,7 @@ class WayPoints(Node):
         Output: None (populates self.path with planned path)
         Logic:
         - Plans a path from start to goal with enhanced smoothness and collision avoidance
-        - First tries ImprovedPathPlanner as primary planning method
+        - First tries SAPPHIREPathPlanner as primary planning method
         - Falls back to RRT planner if primary planner fails
         - Runs multiple planners in parallel with different parameters
         - Adds interpolation for smoother movement
@@ -2143,12 +2143,12 @@ class WayPoints(Node):
         """
         
         # First try improved path planner
-        planner = ImprovedPathPlanner(start, goal, self.obstacles, self.obstacle_quadtree)
+        planner = SAPPHIREPathPlanner(start, goal, self.obstacles, self.obstacle_quadtree)
         self.path = planner.plan()
 
         # If still no path found (very rare with the fallback mechanisms)
         if not self.path:
-            self.get_logger().warn("Primary planner failed, attempting RRT fallback...")
+            self.get_logger().warn("Primary planner failed, attempting RRT* fallback...")
             
             # Try RRT* as fallback with minimal clearance
             from concurrent.futures import ThreadPoolExecutor
