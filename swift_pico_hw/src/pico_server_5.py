@@ -2,9 +2,9 @@
 
 """
 # Team ID:          1284
-# Theme:            WareHouse Drone
 # Author List:      Salo E S, Govind S Sarath, Arjun G Ravi, Devanand A
 # Filename:         WD_1284_pico_server_5.py
+# Theme:            WareHouse Drone
 # Functions:        __init__, butter_lowpass, filter_throttle, disarm, arm, whycon_callback, altitude_set_pid, roll_set_pid, pitch_set_pid, yaw_set_pid, pid, execute_callback, is_drone_in_sphere, main
 # Global variables: None
 """
@@ -45,24 +45,23 @@ CMD = [[], [], []]
 
 class WayPointServer(Node):
 
+    """
+    Function Name: __init__
+    Input:   None
+    Output:  Initializes the waypoint server and sets up the necessary variables, publishers, subscribers, and action servers.
+    Logic:
+           - Initializes the class with the name "waypoint_server".
+           - Sets up sphere tracking variables to monitor drone position and stabilization.
+           - Initializes drone position, PID control parameters, error tracking, and value limits.
+           - Creates publishers for drone command and PID error messages.
+           - Subscribes to topics for position tracking and PID tuning.
+           - Establishes an arming service client for drone control.
+           - Initializes an action server for waypoint navigation.
+           - Creates a timer to execute PID control at regular intervals.
+    Example Call:  obj = WaypointServer()
+    """
+
     def __init__(self):
-        """
-        Purpose:
-        ---
-        Initialize the node and the controller
-
-        Input Arguments:
-        ---
-        None
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        WayPointServer()
-        """
 
         super().__init__("waypoint_server")
 
@@ -144,146 +143,111 @@ class WayPointServer(Node):
         
         
         self.landing_requested = False
+
+    """
+    Function Name: whycon_callback
+    Input:   msg (geometry_msgs/PoseArray) - The message containing position data from the WhyCon localization system.
+    Output:  Updates the drone's current position and timestamp based on WhyCon data.
+    Logic:
+        - Extracts the x, y, and z coordinates of the drone from the first pose in the message.
+        - Updates the drone_position list with the extracted coordinates.
+        - Retrieves the timestamp from the message header and updates the dtime variable.
+    Example Call:  obj.whycon_callback(msg)
+        """    
         
     def whycon_callback(self, msg):
-        """
-        purpose:
-        ---
-        Callback function for whycon poses and update sphere tracking
 
-        Input Arguments:
-        ---
-        msg : PoseArray
-            The message containing the poses of the drone
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        self.whycon_callback(msg)
-        """
         self.drone_position[0] = msg.poses[0].position.x
         self.drone_position[1] = msg.poses[0].position.y
         self.drone_position[2] = msg.poses[0].position.z
         self.dtime = msg.header.stamp.sec
-        
-        
+
+    """
+    Function Name: altitude_set_pid
+    Input:   alt (PIDTune) - The message containing the PID values for altitude control.
+    Output:  Updates the PID gains for altitude control based on the received message.
+    Logic:
+           - Updates the proportional (Kp), integral (Ki), and derivative (Kd) gains for altitude.
+           - Scales the received PID values appropriately for better tuning precision.
+           - Kp is scaled by 0.01, Ki by 0.001, and Kd by 0.1 before assigning to respective variables.
+    Example Call:  self.altitude_set_pid(alt)
+    """
+            
     def altitude_set_pid(self, alt):
-        """
-        purpose:
-        ---
-        Set the PID values for altitude
-
-        Input Arguments:
-        ---
-        alt : PIDTune
-            The message containing the PID values
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        self.altitude_set_pid(alt)
-        """
+    
         self.Kp[2] = alt.kp * 0.01
         self.Ki[2] = alt.ki * 0.001
         self.Kd[2] = alt.kd * 0.1
+    
+    """
+    Function Name: pitch_set_pid
+    Input:   pitch (PIDTune) - The message containing the PID values for pitch control.
+    Output:  Updates the PID gains for pitch control based on the received message.
+    Logic:
+           - Updates the proportional (Kp), integral (Ki), and derivative (Kd) gains for pitch.
+           - Scales the received PID values appropriately for better tuning precision.
+           - Kp is scaled by 0.01, Ki by 0.001, and Kd by 0.1 before assigning to respective variables.
+    Example Call:  self.pitch_set_pid(pitch)
+    """
 
     def pitch_set_pid(self, pitch):
-        """
-        purpose:
-        ---
-        Set the PID values for pitch
-
-        Input Arguments:
-        ---
-        pitch : PIDTune
-            The message containing the PID values
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        self.pitch_set_pid(pitch)
-        """
+        
         self.Kp[1] = pitch.kp * 0.01
         self.Ki[1] = pitch.ki * 0.001
         self.Kd[1] = pitch.kd * 0.1
+    
+    """
+    Function Name: roll_set_pid
+    Input:   roll (PIDTune) - The message containing the PID values for roll control.
+    Output:  Updates the PID gains for roll control based on the received message.
+    Logic:
+           - Updates the proportional (Kp), integral (Ki), and derivative (Kd) gains for roll.
+           - Scales the received PID values appropriately for better tuning precision.
+           - Kp is scaled by 0.01, Ki by 0.001, and Kd by 0.1 before assigning to respective variables.
+    Example Call:  self.roll_set_pid(roll)
+    """
 
     def roll_set_pid(self, roll):
-        """
-        purpose:
-        ---
-        Set the PID values for roll
-
-        Input Arguments:
-        ---
-        roll : PIDTune
-            The message containing the PID values
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        self.roll_set_pid(roll)
-        """
+        
         self.Kp[0] = roll.kp * 0.01
         self.Ki[0] = roll.ki * 0.001
         self.Kd[0] = roll.kd * 0.1
     
+    """
+    Function Name: send_request
+    Input:   None
+    Output:  Sends a request to arm the drone using the service client.
+    Logic:
+           - Sets the request value to `True` to initiate the arming process.
+           - Calls the service client asynchronously to send the request.
+           - Returns a Future object representing the result of the request.
+    Example Call:  self.send_request()
+    """
+    
     def send_request(self):
-        """
-        purpose:
-        ---
-        Send request to arm the drone using the service client
         
-        Input Arguments:
-        ---
-        None
-        
-        Returns:
-        ---
-        future : Future
-            Future object
-            
-        Example call:
-        ---
-        self.send_request()
-        """
         self.req.value = True
         return self.cli.call_async(self.req)
+
+    """
+    Function Name: publish_filtered_data
+    Input:  
+           roll (int) - The roll value for drone stabilization.
+           pitch (int) - The pitch value for drone stabilization.
+           throttle (int) - The throttle value for altitude control.
+    Output: Publishes the filtered control data to the drone.
+    Logic:
+           - Converts roll, pitch, and throttle values to integer format and initializes yaw to 1500.
+           - Implements a Butterworth low-pass filter to smooth control signals.
+           - Maintains a rolling window of past values for filtering.
+           - Applies filtering using scipy’s Butterworth filter for noise reduction.
+           - Ensures filtered values do not exceed predefined limits (MAX/MIN thresholds).
+           - Publishes the processed control commands to the drone.
+    Example Call:  self.publish_filtered_data(roll, pitch, throttle)
+    """
     
     def publish_filtered_data(self, roll, pitch, throttle):
-        """
-        purpose:
-        ---
-        Publish the filtered data to the drone
-        
-        Input Arguments:
-        ---
-        roll : int
-            The roll value
-        pitch : int
-            The pitch value
-        throttle : int
-            The throttle value
-            
-        Returns:
-        ---
-        None
-        
-        Example call:
-        ---
-        self.publish_filtered_data(roll, pitch, throttle)
-        """
+
         self.cmd.rc_throttle = int(throttle)
         self.cmd.rc_roll = int(roll)
         self.cmd.rc_pitch = int(pitch)
@@ -330,25 +294,23 @@ class WayPointServer(Node):
                     self.cmd.rc_throttle = rc_throttle
 
         self.command_pub.publish(self.cmd)
+
+    """
+    Function Name: pid
+    Input:   None
+    Output:  Computes PID control signals and updates the drone's movement.
+    Logic:
+           - Computes error as the difference between current and target positions.
+           - Implements anti-windup by limiting the accumulated error.
+           - Updates previous error values for derivative calculations.
+           - Computes PID control outputs using proportional, integral, and derivative terms.
+           - Adjusts roll, pitch, and throttle commands based on PID outputs.
+           - Calls `publish_filtered_data` to send control commands.
+           - Publishes PID errors for debugging and analysis.
+    Example Call:  self.pid()
+    """
         
     def pid(self):
-        """
-        purpose:
-        ---
-        PID controller for the drone to reach the setpoint in the arena
-
-        Input Arguments:
-        ---
-        None
-
-        Returns:
-        ---
-        None
-
-        Example call:
-        ---
-        self.pid()
-        """
         
         for i in range(3):
             self.error[i] = self.drone_position[i] - self.setpoint[i]
@@ -392,28 +354,31 @@ class WayPointServer(Node):
         
         self.publish_filtered_data(roll = rc_roll, pitch = rc_pitch, throttle = raw_throttle)
         self.pid_error_pub.publish(self.pid_error)
+
+    """
+    Function Name: execute_callback
+    Input:   
+        - `goal_handle` : [GoalHandle]
+            The goal handle containing the request and feedback channels for the action client.
+    Output:  
+        - `result` : [NavToWaypoint.Result]
+            The result message to be sent to the action client.
+    Logic:
+        - Stores the previous setpoint before updating it to the new waypoint.
+        - Updates the setpoint values from the received goal handle.
+        - Resets the integral component if there is a significant change in the setpoint.
+        - Initializes tracking variables for time spent inside the goal sphere.
+        - Continuously publishes feedback with the drone's current position.
+        - Checks whether the drone is inside the target sphere.
+        - If the drone stabilizes in the target sphere for 3 seconds, considers the goal reached.
+        - If `goal_handle.request.avada_kedavra` is set to `True`, initiates a landing sequence.
+        - If the drone reaches a non-goal waypoint, proceeds to the next point.
+    Example Call:
+        await self.execute_callback(goal_handle)
+"""
          
     async def execute_callback(self, goal_handle):
-        """
-        Purpose:
-        ---
-        Callback to send feedback to client after receiving a waypoint, and also checks if the drone is stabilizing for three seconds
-
-        Input Arguments:
-        ---
-        `goal_handle` :  [ < type of 1st input argument > ]
-            The goal handle containing the request and feedback channels for the action client
-
-        Returns:
-        ---
-        `result` :  [ NavToWaypoint.Result ]
-            Result message to be sent to the action client
-
-        Example call:
-        ---
-        await self.execute_callback(goal_handle)
-        """
-
+       
         # Store old setpoint
         old_setpoint = self.setpoint.copy()
         
@@ -505,64 +470,78 @@ class WayPointServer(Node):
         result.hov_time = float(self.dtime - self.duration)
         return result
 
-    def is_drone_in_sphere(self, drone_pos, sphere_center, radius):
-        """
-        Purpose:
-        ---
-        Checks if the drone is within a specified sphere centered at a given waypoint.
-
-        Input Arguments:
-        ---
-        `drone_pos` :  [ list ]
+    """
+    Function Name: is_drone_in_sphere
+    Input:   
+        - `drone_pos` : [list]
             A list containing the x, y, and z coordinates of the drone's position.
-
-        `sphere_center` :  [ object ]
-            An object containing the waypoint information which includes the center coordinates of the sphere.
-
-        `radius` :  [ float ]
+        - `sphere_center` : [object]
+            An object containing the waypoint information, which includes the center coordinates of the sphere.
+        - `radius` : [float]
             The radius of the sphere within which the drone's position is to be checked.
-
-        Returns:
-        ---
-        `is_within_sphere` :  [ bool ]
+    Output:  
+        - `is_within_sphere` : [bool]
             A boolean value indicating whether the drone is inside the sphere or not.
-
-
-        Example call:
-        ---
+    Logic:
+        - Computes the squared Euclidean distance between the drone's position and the sphere center.
+        - Compares this distance with the square of the radius.
+        - Returns `True` if the distance is within or equal to the radius, otherwise returns `False`.
+    Example Call:
         self.is_drone_in_sphere([1.0, 2.0, 3.0], goal_handle, 1.5)
-        """
+    """
+
+    def is_drone_in_sphere(self, drone_pos, sphere_center, radius):
         return (
             (drone_pos[0] - sphere_center.request.waypoint.position.x) ** 2
             + (drone_pos[1] - sphere_center.request.waypoint.position.y) ** 2
             + (drone_pos[2] - sphere_center.request.waypoint.position.z) ** 2
         ) <= radius**2
+
+    """
+    Function Name: waypoint_callback
+    Input:   
+        - `request` : [object]
+            The request object containing parameters sent by the client.
+        - `response` : [object]
+            The response object that will be modified and sent back to the client.
+    Output:  
+        - `response` : [object]
+            The updated response object indicating whether the landing request has been acknowledged.
+    Logic:
+        - Checks if the request contains the attribute `land_drone` and if it is set to `True`.
+        - If `land_drone` is `True`, sets the `landing_requested` flag to `True`.
+        - Updates the response to indicate that the landing process has been acknowledged.
+    Example Call:
+        response = self.waypoint_callback(request, response)
+    """
             
     def waypoint_callback(self, request, response):
         if hasattr(request, 'land_drone') and request.land_drone:
             self.landing_requested = True
             response.landing_complete = True
             return response
-    
-    async def land_safely(self):
-        """
-        Purpose:
-        ---
-        Safely land the drone by disarming it after controlled descent.
-        
-        Input Arguments:
-        ---
-        None
-        
-        Returns:
-        ---
-        None
-        
-        Example call:
-        ---
+
+    """
+    Function Name: land_safely
+    Input:   
+        - None
+    Output:  
+        - None
+    Logic:
+        - Logs the beginning of the controlled descent process.
+        - Retrieves the initial height of the drone.
+        - Defines a descent rate and duration for gradual lowering.
+        - Iteratively reduces the altitude of the drone until it reaches a set threshold (30.5).
+        - Uses an awaitable sleep mechanism to allow other callbacks to execute while descending.
+        - Once the threshold is reached, the drone is disarmed safely.
+        - Logs the completion of the landing process.
+        - Sends a disarm request to the appropriate service client.
+    Example Call:
         await self.land_safely()
-        
-        """
+    """
+
+    async def land_safely(self):
+
         self.get_logger().info("Beginning controlled descent...")
         
         initial_height = self.drone_position[2]
@@ -585,25 +564,26 @@ class WayPointServer(Node):
         self.req.value = False
         await self.cli.call_async(self.req)
 
+"""
+Function Name: main
+Input:   
+    - None
+Output:  
+    - None
+Logic:
+       - Initializes the ROS 2 node.
+       - Creates an instance of the `WayPointServer` class.
+       - Initializes a multi-threaded executor to handle concurrent operations.
+       - Adds the waypoint server node to the executor.
+       - Runs the executor to keep the node alive and responsive.
+       - Handles keyboard interrupts gracefully by logging a shutdown message.
+       - Ensures proper cleanup by destroying the node and shutting down ROS 2.
+Example Call:
+       main()
+"""
+
 def main(args=None):
-    """
-    Purpose:
-    ---
-    Main function to initialize the node and run the Server
-
-    Input Arguments:
-    ---
-    None
-
-    Returns:
-    ---
-    None
-
-    Example call:
-    ---
-    main()
-    """
-
+    
     rclpy.init(args=args)
 
     waypoint_server = WayPointServer()
