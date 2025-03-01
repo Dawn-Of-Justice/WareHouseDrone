@@ -23,7 +23,6 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
 from rclpy.callback_groups import ReentrantCallbackGroup
-import matplotlib.pyplot as plt
 
 @dataclass
 class Point:
@@ -38,33 +37,42 @@ class Point:
             return False
         return self.x == other.x and self.y == other.y
 
-def visualize_path(
+def save_path_visualization(
     path: List[Point],
     obstacles: Set[Tuple[int, int]],
     start: Point,
     goal: Point,
+    filename: str = "/tmp/path_visualization.png",
     x_max: int = 1000,
-    y_max: int = 1000,
-    show_clearance: bool = True
+    y_max: int = 1000
 ):
     """
-    Visualize the planned path with obstacles, start, and goal points.
+    Save path visualization to a file instead of trying to display it.
+    This avoids threading issues with matplotlib and GUI frameworks.
     
     Args:
         path: List of Points representing the planned path
         obstacles: Set of (x,y) tuples representing obstacle positions
         start: Starting Point
         goal: Goal Point
+        filename: File to save the visualization to
         x_max: Maximum x coordinate of the space
         y_max: Maximum y coordinate of the space
-        show_clearance: Whether to show clearance areas around obstacles
     """
-    # Create figure and axis
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import math
+    import os
+    
+    # Create figure
     plt.figure(figsize=(12, 12))
     
-    # Plot obstacles
-    obstacle_x = [x for x, y in obstacles]
-    obstacle_y = [y for _, y in obstacles]
+    # Plot obstacles (sample if there are too many)
+    obstacle_sample = list(obstacles)[:5000] if len(obstacles) > 5000 else obstacles
+    obstacle_x = [x for x, y in obstacle_sample]
+    obstacle_y = [y for _, y in obstacle_sample]
     plt.scatter(obstacle_x, obstacle_y, c='black', s=1, alpha=0.5, label='Obstacles')
     
     # Plot path
@@ -73,8 +81,9 @@ def visualize_path(
         path_y = [p.y for p in path]
         plt.plot(path_x, path_y, 'b-', linewidth=2, label='Planned Path')
         
-        # Add arrows to show direction
-        for i in range(len(path)-1):
+        # Add arrows for direction (limit for performance)
+        arrow_step = max(1, len(path)//20)
+        for i in range(0, len(path)-1, arrow_step):
             dx = path[i+1].x - path[i].x
             dy = path[i+1].y - path[i].y
             plt.arrow(path[i].x, path[i].y, dx*0.2, dy*0.2,
@@ -100,12 +109,15 @@ def visualize_path(
             for i in range(len(path)-1)
         )
         
-        # Calculate average turn angle to measure smoothness
+        # Calculate average turn angle (simplified)
+        angle_samples = min(len(path)-2, 20)
+        angle_step = max(1, (len(path)-2)//angle_samples)
+        
         total_angle_change = 0
         angle_changes = []
         
         if len(path) > 2:
-            for i in range(1, len(path)-1):
+            for i in range(1, len(path)-1, angle_step):
                 vec1 = (path[i].x - path[i-1].x, path[i].y - path[i-1].y)
                 vec2 = (path[i+1].x - path[i].x, path[i+1].y - path[i].y)
                 
@@ -138,7 +150,64 @@ def visualize_path(
         )
     
     plt.tight_layout()
-    plt.show()
+    
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
+    
+    # Save to file
+    plt.savefig(filename, dpi=150)
+    plt.close()
+    
+    return filename
+
+def interpolate_path(path, points_per_segment=5, min_distance=1.5):
+    """
+    Add uniformly spaced points between waypoints to create a smoother path,
+    but only if the distance between waypoints is greater than min_distance
+    
+    Args:
+        path: List of Points representing the planned path
+        points_per_segment: Number of points to add between each pair of waypoints
+        min_distance: Minimum distance between points to add interpolation (in units)
+        
+    Returns:
+        List of Points with added intermediate waypoints
+    """
+    if len(path) < 2:
+        return path
+        
+    smooth_path = [path[0]]  # Start with the first point
+    
+    for i in range(len(path) - 1):
+        start = path[i]
+        end = path[i+1]
+        
+        # Calculate segment vector and distance
+        dx = end.x - start.x
+        dy = end.y - start.y
+        distance = math.sqrt(dx*dx + dy*dy)
+        
+        # Only add intermediate points if the distance is greater than min_distance
+        if distance > min_distance:
+            # Calculate number of points based on distance
+            # More points for longer segments
+            actual_points = max(2, min(int(distance / min_distance), points_per_segment))
+            
+            # Add intermediate points
+            for j in range(1, actual_points):
+                t = j / actual_points
+                new_x = start.x + t * dx
+                new_y = start.y + t * dy
+                smooth_path.append(Point(new_x, new_y))
+        
+        # Add the endpoint (except for the last segment where we'll add it at the end)
+        if i < len(path) - 2:
+            smooth_path.append(end)
+    
+    # Add the final endpoint
+    smooth_path.append(path[-1])
+    
+    return smooth_path
 
 class QuadTree:
     def __init__(self, x, y, width, height, max_points=4, max_depth=6, depth=0):
@@ -573,7 +642,7 @@ class ImprovedPathPlanner:
         obstacles: Set[Tuple[int, int]],
         obstacle_quadtree: Optional[QuadTree] = None,
         max_iterations: int = 3000,
-        min_clearance: float = 4.0  # Reduced from 5.0 for better path finding
+        min_clearance: float = 4.5
     ):
         """
         Enhanced path planner with improved collision avoidance and smoothness
@@ -1155,205 +1224,9 @@ class ImprovedPathPlanner:
 
         return list(reversed(path))  # Reverse to get start-to-goal order
 
-class WayPoints(Node):
-    def __init__(self):
-        super().__init__("waypoints_service")
-        self.callback_group = ReentrantCallbackGroup()
-        self.current_waypoint = [500, 500]
-        self.package_whycon_location = {
-            0: [500, 500], # Origin
-            1: [224, 256],
-            2: [690, 257],
-            3: [161, 736],
-            4: [843, 587],
-            5: [554, 683],
-            6: [835, 931]
-        }
-        
-        self.goals = [
-                Point(self.package_whycon_location[2][0], 
-                      self.package_whycon_location[2][1]),
-                Point(self.package_whycon_location[3][0], 
-                      self.package_whycon_location[3][1]),
-                Point(self.package_whycon_location[0][0], 
-                      self.package_whycon_location[0][1]),  # Origin, used to come back
-            ]
-        
-        self.obstacles = load_map("/home/salo/pico_ws2/2D_bit_map.png")
-        self.obstacle_quadtree = self._create_obstacle_quadtree()
-        
-        self.count = 0
-        self.path = []
-        
-        self.model_x = joblib.load("src/swift_pico_hw/src/linear_model_x.pkl")
-        self.model_y = joblib.load("src/swift_pico_hw/src/linear_model_y.pkl")
-        self.scalar = joblib.load("src/swift_pico_hw/src/scaler_inverse.pkl")
-        
-        self.srv = self.create_service(
-            GetWaypoints,
-            "waypoints",
-            self.waypoint_callback,
-            callback_group=self.callback_group,
-        )
-    
-    def _create_obstacle_quadtree(self):
-        """Create a quadtree data structure for efficient obstacle collision checking"""
-        # Find bounds of space
-        if not self.obstacles:
-            return None
-            
-        max_x = max(x for x, _ in self.obstacles)
-        max_y = max(y for _, y in self.obstacles)
-        
-        # Create quadtree
-        qt = QuadTree(0, 0, max_x + 1, max_y + 1)
-        
-        # Insert obstacles
-        for obstacle in self.obstacles:
-            qt.insert(obstacle)
-            
-        return qt
-    
-    def interpolate_path(self, path, points_per_segment=5):
-        """
-        Add uniformly spaced points between waypoints to create a smoother path
-        
-        Args:
-            path: List of Points representing the planned path
-            points_per_segment: Number of points to add between each pair of waypoints
-            
-        Returns:
-            List of Points with added intermediate waypoints
-        """
-        if len(path) < 2:
-            return path
-            
-        smooth_path = [path[0]]  # Start with the first point
-        
-        for i in range(len(path) - 1):
-            start = path[i]
-            end = path[i+1]
-            
-            # Calculate segment vector
-            dx = end.x - start.x
-            dy = end.y - start.y
-            
-            # Add intermediate points
-            for j in range(1, points_per_segment):
-                t = j / points_per_segment
-                new_x = start.x + t * dx
-                new_y = start.y + t * dy
-                smooth_path.append(Point(new_x, new_y))
-                
-            # Add the endpoint (except for the last segment where we'll add it at the end)
-            if i < len(path) - 2:
-                smooth_path.append(end)
-        
-        # Add the final endpoint
-        smooth_path.append(path[-1])
-        
-        return smooth_path
-
-    def pixel_to_whycon(self, imgx, imgy):
-        points = np.array([[imgx, imgy]])
-        points_scaled = self.scalar.transform(points)
-
-        goal_x = self.model_x.predict(points_scaled)
-        goal_y = self.model_y.predict(points_scaled)
-        goal_z = 26.0
-        goal = [goal_x, goal_y, goal_z]
-        return goal
-
-    def waypoint_callback(self, request, response):
-        if not request.get_waypoints:
-            self.get_logger().info("Request rejected")
-            return response
-
-        # Wait for goals if they're not available
-        if self.goals is None:
-            self.get_logger().info("Waiting for goals to be available...")
-
-        if self.goals is None:
-            self.get_logger().error("No goals available!")
-            return response
-
-        # Process waypoints
-        while not self.path:
-            start = Point(*self.current_waypoint)
-            if self.count < len(self.goals):
-                goal = self.goals[self.count]
-                self.get_logger().info(f"Planning path from {start} to {goal}")
-                
-                # Plan new path - always calculate fresh path without caching
-                self.path_planning(start, goal, visualize=True)
-        
-        self.count += 1
-        
-        # Prepare response - handle interpolated path
-        response.waypoints.poses = [Pose() for _ in range(len(self.path))]
-        
-        # Use batch conversion for efficiency with larger number of points
-        for i, path_point in enumerate(self.path):
-            point = self.pixel_to_whycon(path_point.x, path_point.y)
-            response.waypoints.poses[i].position.x = float(point[0])
-            response.waypoints.poses[i].position.y = float(point[1])
-            response.waypoints.poses[i].position.z = float(point[2])
-
-        self.get_logger().info(f"Waypoints ready: {len(self.path)} points")
-        self.current_waypoint = [self.path[-1].x, self.path[-1].y]
-        self.path = []
-
-        return response
-
-    def path_planning(self, start, goal, visualize=False):
-        """Plan a path from start to goal with enhanced smoothness and collision avoidance"""
-        
-        # First try improved path planner
-        planner = ImprovedPathPlanner(start, goal, self.obstacles, self.obstacle_quadtree)
-        self.path = planner.plan()
-
-        # If still no path found (very rare with the fallback mechanisms)
-        if not self.path:
-            self.get_logger().warn("Primary planner failed, attempting RRT fallback...")
-            
-            # Try RRT* as fallback with minimal clearance
-            from concurrent.futures import ThreadPoolExecutor
-            
-            # Create and run multiple RRT planners with different parameters in parallel
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                # Different settings for parallel attempts
-                futures = [
-                    executor.submit(self._try_rrt_planning, start, goal, 1.0, 5000, 20.0),  # Standard
-                    executor.submit(self._try_rrt_planning, start, goal, 0.5, 7000, 15.0)  # Aggressive
-                ]
-                
-                # Use the first successful result
-                for future in futures:
-                    result = future.result()
-                    if result:
-                        self.path = result
-                        self.get_logger().info("Found path using fallback planner")
-                        break
-
-        if self.path:
-            self.get_logger().info(f"Raw path found with {len(self.path)} waypoints")
-            
-            # Add interpolated points for smoother movement
-            self.path = self.interpolate_path(self.path, points_per_segment=5)
-            self.get_logger().info(f"Interpolated path now has {len(self.path)} waypoints")
-            
-            # Visualize the path if requested
-            if visualize:
-                self.get_logger().info("Visualizing path...")
-                visualize_path(self.path, self.obstacles, start, goal, show_clearance=True)
-        else:
-            self.get_logger().error("No path found with any method!")
-            
-    def _try_rrt_planning(self, start, goal, min_clearance, max_iterations, step_size):
-        """Try RRT planning with given parameters"""
-        # Define a lightweight RRT planner inline rather than importing
-
 class RRTPlanner:
+    """Rapidly-exploring Random Tree (RRT) path planner"""
+    
     def __init__(
         self, 
         start: Point, 
@@ -1365,6 +1238,19 @@ class RRTPlanner:
         goal_sample_rate: float = 0.3,
         min_clearance: float = 1.0
     ):
+        """
+        Initialize RRT planner
+        
+        Args:
+            start: Starting point
+            goal: Goal point
+            obstacles: Set of obstacle coordinates (x,y)
+            obstacle_quadtree: Optional quadtree for efficient obstacle lookups
+            max_iterations: Maximum iterations to attempt path finding
+            step_size: Maximum distance for each step in the tree
+            goal_sample_rate: Probability of sampling the goal point directly
+            min_clearance: Minimum clearance from obstacles
+        """
         self.start = GraphNode(start)
         self.goal = GraphNode(goal)
         self.obstacles = obstacles
@@ -1466,6 +1352,7 @@ class RRTPlanner:
         for i in range(self.max_iterations):
             # Check time limit
             if time.time() - start_time > time_limit:
+                print(f"RRT time limit reached after {i} iterations")
                 break
                 
             # Sample random point
@@ -1519,14 +1406,256 @@ class RRTPlanner:
             return list(reversed(path))
         
         return []  # No path found
+
+class WayPoints(Node):
+    def __init__(self):
+        super().__init__("waypoints_service")
+        self.callback_group = ReentrantCallbackGroup()
+        self.current_waypoint = [500, 500]
+        self.package_whycon_location = {
+            0: [500, 500], # Origin
+            1: [224, 256],
+            2: [690, 257],
+            3: [161, 736],
+            4: [843, 587],
+            5: [554, 683],
+            6: [835, 931]
+        }
         
-        planner = RRTPlanner(
-            start, goal, self.obstacles, self.obstacle_quadtree,
-            max_iterations=max_iterations, step_size=step_size,
-            goal_sample_rate=0.3, min_clearance=min_clearance
+        self.goals = [
+                Point(self.package_whycon_location[4][0], 
+                      self.package_whycon_location[4][1]),
+                Point(self.package_whycon_location[3][0], 
+                      self.package_whycon_location[3][1]),
+                Point(self.package_whycon_location[0][0], 
+                      self.package_whycon_location[0][1]),  # Origin, used to come back
+            ]
+        
+        self.obstacles = load_map("/home/salo/pico_ws2/2D_bit_map.png")
+        self.obstacle_quadtree = self._create_obstacle_quadtree()
+        
+        self.count = 0
+        self.path = []
+        
+        self.model_x = joblib.load("src/swift_pico_hw/src/linear_model_x.pkl")
+        self.model_y = joblib.load("src/swift_pico_hw/src/linear_model_y.pkl")
+        self.scalar = joblib.load("src/swift_pico_hw/src/scaler_inverse.pkl")
+        
+        self.srv = self.create_service(
+            GetWaypoints,
+            "waypoints",
+            self.waypoint_callback,
+            callback_group=self.callback_group,
         )
-        return planner.plan()
     
+    def _create_obstacle_quadtree(self):
+        """Create a quadtree data structure for efficient obstacle collision checking"""
+        # Find bounds of space
+        if not self.obstacles:
+            return None
+            
+        max_x = max(x for x, _ in self.obstacles)
+        max_y = max(y for _, y in self.obstacles)
+        
+        # Create quadtree
+        qt = QuadTree(0, 0, max_x + 1, max_y + 1)
+        
+        # Insert obstacles
+        for obstacle in self.obstacles:
+            qt.insert(obstacle)
+            
+        return qt
+    
+    def pixel_to_whycon(self, imgx, imgy):
+        points = np.array([[imgx, imgy]])
+        points_scaled = self.scalar.transform(points)
+
+        goal_x = self.model_x.predict(points_scaled)
+        goal_y = self.model_y.predict(points_scaled)
+        goal_z = 26.0
+        goal = [goal_x, goal_y, goal_z]
+        return goal
+
+    def waypoint_callback(self, request, response):
+        if not request.get_waypoints:
+            self.get_logger().info("Request rejected")
+            return response
+
+        # Wait for goals if they're not available
+        if self.goals is None:
+            self.get_logger().info("Waiting for goals to be available...")
+
+        if self.goals is None:
+            self.get_logger().error("No goals available!")
+            return response
+
+        # Process waypoints
+        while not self.path:
+            start = Point(*self.current_waypoint)
+            if self.count < len(self.goals):
+                goal = self.goals[self.count]
+                self.get_logger().info(f"Planning path from {start} to {goal}")
+                
+                # Plan new path - always calculate fresh path without caching
+                self.path_planning(start, goal, visualize=True)
+        
+        self.count += 1
+        
+        # Prepare response - handle interpolated path
+        response.waypoints.poses = [Pose() for _ in range(len(self.path))]
+        
+        # Use batch conversion for efficiency with larger number of points
+        for i, path_point in enumerate(self.path):
+            point = self.pixel_to_whycon(path_point.x, path_point.y)
+            response.waypoints.poses[i].position.x = float(point[0])
+            response.waypoints.poses[i].position.y = float(point[1])
+            response.waypoints.poses[i].position.z = float(point[2])
+
+        self.get_logger().info(f"Waypoints ready: {len(self.path)} points")
+        self.current_waypoint = [self.path[-1].x, self.path[-1].y]
+        self.path = []
+
+        return response
+
+    def path_planning(self, start, goal, visualize=False):
+        """Plan a path from start to goal with enhanced smoothness and collision avoidance"""
+        
+        # First try improved path planner
+        planner = ImprovedPathPlanner(start, goal, self.obstacles, self.obstacle_quadtree)
+        self.path = planner.plan()
+
+        # If still no path found (very rare with the fallback mechanisms)
+        if not self.path:
+            self.get_logger().warn("Primary planner failed, attempting RRT fallback...")
+            
+            # Try RRT* as fallback with minimal clearance
+            from concurrent.futures import ThreadPoolExecutor
+            
+            # Create and run multiple RRT planners with different parameters in parallel
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                # Different settings for parallel attempts
+                futures = [
+                    executor.submit(self._try_rrt_planning, start, goal, 1.0, 5000, 20.0),  # Standard
+                    executor.submit(self._try_rrt_planning, start, goal, 0.5, 7000, 15.0)  # Aggressive
+                ]
+                
+                # Use the first successful result
+                for future in futures:
+                    result = future.result()
+                    if result:
+                        self.path = result
+                        self.get_logger().info("Found path using fallback planner")
+                        break
+
+        if self.path:
+            self.get_logger().info(f"Raw path found with {len(self.path)} waypoints")
+            
+            # Add interpolated points for smoother movement, but only where needed
+            original_path_length = len(self.path)
+            self.path = interpolate_path(self.path, points_per_segment=5, min_distance=1.5)
+            self.get_logger().info(f"Path interpolated from {original_path_length} to {len(self.path)} waypoints")
+            
+            if visualize:
+                self.get_logger().info("Saving path visualization to file...")
+                try:
+                    # Generate a timestamp-based filename
+                    import datetime
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    vis_file = f"/tmp/path_{timestamp}.png"
+                    
+                    # Save visualization to file
+                    saved_file = save_path_visualization(
+                        self.path, self.obstacles, start, goal, 
+                        filename=vis_file
+                    )
+                    self.get_logger().info(f"Path visualization saved to: {saved_file}")
+                    import subprocess
+                    subprocess.Popen(['xdg-open', saved_file])  # Opens with default image viewer
+                    
+                except Exception as e:
+                    self.get_logger().error(f"Visualization error: {str(e)}")
+        else:
+            self.get_logger().error("No path found with any method!")
+                        
+    def _try_rrt_planning(self, start, goal, min_clearance, max_iterations, step_size, visualize=False):
+        """
+        Try RRT planning with given parameters.
+        
+        Args:
+            start (Point): Start point for the path
+            goal (Point): Goal point for the path
+            min_clearance (float): Minimum clearance from obstacles
+            max_iterations (int): Maximum iterations for the RRT algorithm
+            step_size (float): Step size for RRT exploration
+            visualize (bool): Whether to save path visualization to a file
+            
+        Returns:
+            List[Point]: The found path, or empty list if no path is found
+        """
+        self.get_logger().info(f"Trying RRT with clearance={min_clearance}, iterations={max_iterations}, step={step_size}")
+        
+        try:
+            # Create RRT planner with specified parameters
+            planner = RRTPlanner(
+                start, goal, self.obstacles, self.obstacle_quadtree,
+                max_iterations=max_iterations, 
+                step_size=step_size,
+                goal_sample_rate=0.3, 
+                min_clearance=min_clearance
+            )
+            
+            # Run planning and get the path
+            path = planner.plan()
+            
+            if path:
+                self.get_logger().info(f"RRT planning successful with {len(path)} waypoints")
+                
+                # Post-process the path to add minimal smoothing and interpolation
+                
+                # If path is very sparse, add minimal interpolation to improve control
+                if len(path) < 3:
+                    path = interpolate_path(path, points_per_segment=3, min_distance=1.5)
+                
+                # For longer paths, try to apply light smoothing if there are enough points
+                elif len(path) > 5:
+                    # Try to use the enhanced smoother with reduced parameters
+                    try:
+                        smoother = EnhancedPathSmoother(path, self.obstacles, self.obstacle_quadtree, min_clearance)
+                        smoothed_path = smoother.smooth()
+                        
+                        # Only use smoothed path if it didn't reduce points too much
+                        if len(smoothed_path) >= len(path) * 0.5:
+                            path = smoothed_path
+                            self.get_logger().info(f"Applied smoothing to RRT path, now has {len(path)} waypoints")
+                    except Exception as e:
+                        self.get_logger().warn(f"Smoothing failed, using original RRT path: {str(e)}")
+                
+                # Save visualization to file if requested
+                if visualize:
+                    try:
+                        # Generate a timestamp-based filename for RRT path
+                        import datetime
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        vis_file = f"/tmp/rrt_path_{timestamp}.png"
+                        
+                        # Save visualization to file
+                        saved_file = save_path_visualization(
+                            path, self.obstacles, start, goal, 
+                            filename=vis_file
+                        )
+                        self.get_logger().info(f"RRT path visualization saved to: {saved_file}")
+                    except Exception as e:
+                        self.get_logger().error(f"RRT visualization error: {str(e)}")
+                
+                return path
+            else:
+                self.get_logger().warn("RRT planning failed to find a path")
+                return []
+                
+        except Exception as e:
+            self.get_logger().error(f"Error in RRT planning: {str(e)}")
+            return []
+   
 def load_map(filepath: str) -> Set[Tuple[int, int]]:
     """Load map image and extract obstacle coordinates"""
     image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
@@ -1543,7 +1672,6 @@ def load_map(filepath: str) -> Set[Tuple[int, int]]:
                 obstacles.add((x, y))
 
     return obstacles
-
 
 def main():
     rclpy.init()
