@@ -26,13 +26,40 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 
 @dataclass
 class Point:
+    """
+    Class Name: Point
+    Input: x (float), y (float) - The x and y coordinates of the point
+    Output: A Point object with x and y coordinates and equality/hash functionality
+    Logic:
+    - Represents a 2D point with x and y coordinates
+    - Implements __hash__ and __eq__ methods to allow Points to be used in sets and as dictionary keys
+    Example Creation: point = Point(100, 200)
+    """
     x: float
     y: float
 
     def __hash__(self):
+        """
+        Function Name: __hash__
+        Input: None
+        Output: A hash value for the point
+        Logic: 
+        - Creates a hash value based on the x and y coordinates
+        - Enables Point objects to be used in hash-based collections like sets and dictionaries
+        Example Call: hash_value = hash(point)
+        """
         return hash((self.x, self.y))
     
     def __eq__(self, other):
+        """
+        Function Name: __eq__
+        Input: other (Any) - Object to compare with
+        Output: Boolean indicating whether the points are equal
+        Logic:
+        - Checks if other is a Point object
+        - Returns True if x and y coordinates match, False otherwise
+        Example Call: point1 == point2
+        """
         if not isinstance(other, Point):
             return False
         return self.x == other.x and self.y == other.y
@@ -47,17 +74,22 @@ def save_path_visualization(
     y_max: int = 1000
 ):
     """
-    Save path visualization to a file instead of trying to display it.
-    This avoids threading issues with matplotlib and GUI frameworks.
-    
-    Args:
-        path: List of Points representing the planned path
-        obstacles: Set of (x,y) tuples representing obstacle positions
-        start: Starting Point
-        goal: Goal Point
-        filename: File to save the visualization to
-        x_max: Maximum x coordinate of the space
-        y_max: Maximum y coordinate of the space
+    Function Name: save_path_visualization
+    Input: 
+        path (List[Point]) - List of Points representing the planned path
+        obstacles (Set[Tuple[int, int]]) - Set of (x,y) tuples representing obstacle positions
+        start (Point) - Starting Point
+        goal (Point) - Goal Point
+        filename (str) - File to save the visualization to
+        x_max (int) - Maximum x coordinate of the space
+        y_max (int) - Maximum y coordinate of the space
+    Output: Filename where the visualization was saved
+    Logic:
+    - Saves path visualization to a file instead of trying to display it
+    - Uses non-interactive matplotlib backend to avoid threading issues
+    - Plots obstacles, path, start and goal points with appropriate styling
+    - Adds path statistics (length, waypoint count, average turn angle)
+    Example Call: saved_file = save_path_visualization(path, obstacles, start, goal)
     """
     import matplotlib
     matplotlib.use('Agg')  # Use non-interactive backend
@@ -162,16 +194,17 @@ def save_path_visualization(
 
 def interpolate_path(path, points_per_segment=5, min_distance=1.5):
     """
-    Add uniformly spaced points between waypoints to create a smoother path,
-    but only if the distance between waypoints is greater than min_distance
-    
-    Args:
-        path: List of Points representing the planned path
-        points_per_segment: Number of points to add between each pair of waypoints
-        min_distance: Minimum distance between points to add interpolation (in units)
-        
-    Returns:
-        List of Points with added intermediate waypoints
+    Function Name: interpolate_path
+    Input: 
+        path (List[Point]) - List of Points representing the planned path
+        points_per_segment (int) - Number of points to add between each pair of waypoints
+        min_distance (float) - Minimum distance between points to add interpolation (in units)
+    Output: List of Points with added intermediate waypoints for smoother path
+    Logic:
+    - Adds uniformly spaced points between waypoints to create a smoother path
+    - Only adds intermediate points if the distance between waypoints is greater than min_distance
+    - Adaptive interpolation based on segment distance
+    Example Call: smooth_path = interpolate_path(path, points_per_segment=5, min_distance=1.5)
     """
     if len(path) < 2:
         return path
@@ -210,26 +243,54 @@ def interpolate_path(path, points_per_segment=5, min_distance=1.5):
     return smooth_path
 
 class QuadTree:
+    """
+    Class Name: QuadTree
+    Input: 
+        x, y (float) - Bottom-left corner coordinates
+        width, height (float) - Dimensions of the quadtree
+        max_points (int) - Maximum number of points before subdivision
+        max_depth (int) - Maximum depth of the tree
+        depth (int) - Current depth of the tree
+    Output: A quadtree data structure for efficient spatial queries
+    Logic:
+    - Implements a quadtree for efficient spatial queries of obstacles
+    - Recursively divides space into four quadrants as points are added
+    - Provides methods for point insertion and range/radius queries
+    Example Creation: qt = QuadTree(0, 0, 1000, 1000)
+    """
     def __init__(self, x, y, width, height, max_points=4, max_depth=6, depth=0):
         """
-        Initialize a quadtree for efficient spatial queries
-        
-        Args:
-            x, y: Bottom-left corner coordinates
-            width, height: Dimensions of the quadtree
-            max_points: Maximum number of points before subdivision
-            max_depth: Maximum depth of the tree
-            depth: Current depth of the tree
+        Function Name: __init__
+        Input: 
+            x, y (float) - Bottom-left corner coordinates
+            width, height (float) - Dimensions of the quadtree
+            max_points (int) - Maximum number of points before subdivision
+            max_depth (int) - Maximum depth of the tree
+            depth (int) - Current depth of the tree
+        Output: Initialized QuadTree instance
+        Logic:
+        - Initializes boundary dimensions and parameters
+        - Sets up empty points list and children (initially None)
+        Example Call: Called automatically when creating QuadTree instance
         """
-        self.boundary = (x, y, width, height)
-        self.max_points = max_points
-        self.max_depth = max_depth
-        self.depth = depth
-        self.points = []
-        self.children = None  # NW, NE, SW, SE
+        self.boundary = (x, y, width, height)  # (x, y, width, height)
+        self.max_points = max_points  # Maximum points before subdivision
+        self.max_depth = max_depth  # Maximum depth of the tree
+        self.depth = depth  # Current depth level
+        self.points = []  # Points stored at this node
+        self.children = None  # Will contain four child nodes when subdivided
     
     def subdivide(self):
-        """Create four children for this quadtree node"""
+        """
+        Function Name: subdivide
+        Input: None
+        Output: None (creates four children for this quadtree node)
+        Logic:
+        - Divides current node into four equal quadrants (NW, NE, SE, SW)
+        - Creates child QuadTree nodes for each quadrant
+        - Redistributes existing points to appropriate children
+        Example Call: self.subdivide()
+        """
         x, y, width, height = self.boundary
         half_width = width / 2
         half_height = height / 2
@@ -257,7 +318,18 @@ class QuadTree:
         self.points = []  # Clear points after redistribution
     
     def insert(self, point):
-        """Insert a point into the quadtree"""
+        """
+        Function Name: insert
+        Input: point (Tuple[float, float]) - The (x, y) point to insert
+        Output: Boolean indicating if insertion was successful
+        Logic:
+        - Checks if point is in boundary of this node
+        - Inserts point if space available and no children
+        - Subdivides if needed and not at max depth
+        - Attempts to insert into children if they exist
+        - Falls back to current node if at max depth
+        Example Call: quadtree.insert((100, 200))
+        """
         x, y = point
         
         # Check if point is in boundary
@@ -287,7 +359,16 @@ class QuadTree:
         return False
     
     def query_range(self, range_rect):
-        """Find all points within the given range"""
+        """
+        Function Name: query_range
+        Input: range_rect (Tuple[float, float, float, float]) - Query rectangle (x, y, width, height)
+        Output: List of points found within the given range
+        Logic:
+        - Checks if query range intersects this node's boundary
+        - Collects points at this level that fall within the range
+        - Recursively queries children if they exist
+        Example Call: points = quadtree.query_range((100, 100, 50, 50))
+        """
         found_points = []
         
         # Check if range intersects this node
@@ -309,7 +390,18 @@ class QuadTree:
         return found_points
     
     def query_radius(self, x, y, radius):
-        """Find all points within the given radius of (x,y)"""
+        """
+        Function Name: query_radius
+        Input: 
+            x, y (float) - Center coordinates
+            radius (float) - Search radius
+        Output: List of points within the given radius of (x,y)
+        Logic:
+        - Creates a square bounding box for the radius
+        - Gets candidate points in the square using query_range
+        - Filters candidates by actual radius using distance calculation
+        Example Call: nearby_points = quadtree.query_radius(100, 200, 10)
+        """
         # Use a square bounding box for the radius
         range_rect = (x - radius, y - radius, radius * 2, radius * 2)
         
@@ -318,7 +410,7 @@ class QuadTree:
         
         # Filter by actual radius
         result = []
-        radius_squared = radius * radius
+        radius_squared = radius * radius  # Avoid sqrt in distance calculation
         for point in candidates:
             px, py = point
             if (x - px) ** 2 + (y - py) ** 2 <= radius_squared:
@@ -328,13 +420,32 @@ class QuadTree:
     
     @staticmethod
     def _is_in_boundary(x, y, boundary):
-        """Check if a point is within a boundary rectangle"""
+        """
+        Function Name: _is_in_boundary
+        Input: 
+            x, y (float) - Point coordinates
+            boundary (Tuple[float, float, float, float]) - Boundary rectangle
+        Output: Boolean indicating if the point is within the boundary
+        Logic:
+        - Extracts boundary dimensions (x, y, width, height)
+        - Checks if point coordinates are within boundary rectangle
+        Example Call: QuadTree._is_in_boundary(100, 200, (0, 0, 500, 500))
+        """
         bx, by, bw, bh = boundary
         return (bx <= x <= bx + bw) and (by <= y <= by + bh)
     
     @staticmethod
     def _intersects(r1, r2):
-        """Check if two rectangles intersect"""
+        """
+        Function Name: _intersects
+        Input: 
+            r1, r2 (Tuple[float, float, float, float]) - Two rectangles (x, y, width, height)
+        Output: Boolean indicating if the two rectangles intersect
+        Logic:
+        - Extracts dimensions of both rectangles
+        - Uses standard rectangle intersection logic (not-disjoint check)
+        Example Call: QuadTree._intersects((0, 0, 10, 10), (5, 5, 10, 10))
+        """
         x1, y1, w1, h1 = r1
         x2, y2, w2, h2 = r2
         
@@ -344,51 +455,143 @@ class QuadTree:
                    y1 > y2 + h2)
 
 class GraphNode:
+    """
+    Class Name: GraphNode
+    Input: point (Point) - The 2D point this node represents
+    Output: A graph node used in path planning algorithms
+    Logic:
+    - Represents a node in the search graph for path planning
+    - Stores path information (parent, costs)
+    - Implements comparison methods for priority queue ordering
+    Example Creation: node = GraphNode(Point(100, 200))
+    """
     def __init__(self, point: Point):
-        self.point = point
-        self.parent: Optional["GraphNode"] = None
-        self.cost = float("inf")
-        self.g_cost = float("inf")  # Cost from start
-        self.h_cost = 0  # Heuristic cost to goal
-        self.f_cost = float("inf")  # f = g + h
+        """
+        Function Name: __init__
+        Input: point (Point) - The 2D point this node represents
+        Output: Initialized GraphNode instance
+        Logic:
+        - Stores the point coordinates
+        - Initializes parent reference, cost values, and neighbor list
+        - Sets up cost metrics used in A* and similar algorithms (g_cost, h_cost, f_cost)
+        Example Call: Called automatically when creating GraphNode instance
+        """
+        self.point = point  # The 2D point this node represents
+        self.parent: Optional["GraphNode"] = None  # Parent node in the path
+        self.cost = float("inf")  # Total cost to reach this node
+        self.g_cost = float("inf")  # Cost from start (g-value in A*)
+        self.h_cost = 0  # Heuristic cost to goal (h-value in A*)
+        self.f_cost = float("inf")  # f = g + h (f-value in A*)
         self.neighbors = []  # Store neighbors for path connections
         self.clearance = 0  # Distance to nearest obstacle
 
     def __eq__(self, other):
+        """
+        Function Name: __eq__
+        Input: other (Any) - Object to compare with
+        Output: Boolean indicating if nodes are equal
+        Logic:
+        - Checks if other is a GraphNode
+        - Compares x and y coordinates of the points
+        Example Call: node1 == node2
+        """
         if not isinstance(other, GraphNode):
             return False
         return self.point.x == other.point.x and self.point.y == other.point.y
 
     def __hash__(self):
+        """
+        Function Name: __hash__
+        Input: None
+        Output: A hash value for the node
+        Logic:
+        - Delegates hashing to the point attribute
+        - Enables GraphNode objects to be used in hash-based collections
+        Example Call: hash_value = hash(node)
+        """
         return hash(self.point)
     
     def __lt__(self, other):
-        """Comparison operator for priority queue ordering"""
+        """
+        Function Name: __lt__
+        Input: other (GraphNode) - Node to compare with
+        Output: Boolean indicating if this node has lower cost than other
+        Logic:
+        - Comparison operator for priority queue ordering
+        - First compares f_cost, then h_cost as a tiebreaker
+        - Enables nodes to be properly ordered in the priority queue
+        Example Call: Called automatically when inserting nodes into a priority queue
+        """
         if not isinstance(other, GraphNode):
             return NotImplemented
         return self.f_cost < other.f_cost or (self.f_cost == other.f_cost and self.h_cost < other.h_cost)
 
 class EnhancedPathSmoother:
-    """Advanced path smoother that creates natural-looking, smooth paths"""
+    """
+    Class Name: EnhancedPathSmoother
+    Input: 
+        path (List[Point]) - Initial path to smooth
+        obstacles (Set[Tuple[int, int]]) - Set of obstacle coordinates
+        obstacle_quadtree (QuadTree) - Quadtree for efficient obstacle lookups
+        min_clearance (float) - Minimum clearance from obstacles
+    Output: A smoother that creates natural-looking, obstacle-avoiding paths
+    Logic:
+    - Applies various smoothing techniques to create natural-looking paths
+    - Uses spline interpolation with obstacle avoidance
+    - Optimizes turning angles and path curvature
+    - Maintains minimum clearance from obstacles
+    Example Creation: smoother = EnhancedPathSmoother(path, obstacles, quadtree, 5.0)
+    """
     
     def __init__(self, path: List[Point], obstacles: Set[Tuple[int, int]], 
                  obstacle_quadtree: QuadTree, min_clearance: float = 5.0):
-        self.path = path.copy()  # Work on a copy
-        self.obstacles = obstacles
-        self.quadtree = obstacle_quadtree
-        self.min_clearance = min_clearance
+        """
+        Function Name: __init__
+        Input: 
+            path (List[Point]) - Initial path to smooth
+            obstacles (Set[Tuple[int, int]]) - Set of obstacle coordinates
+            obstacle_quadtree (QuadTree) - Quadtree for efficient obstacle lookups
+            min_clearance (float) - Minimum clearance from obstacles
+        Output: Initialized EnhancedPathSmoother instance
+        Logic:
+        - Stores path, obstacles, and parameters
+        - Makes a copy of the input path to avoid modifying the original
+        Example Call: Called automatically when creating EnhancedPathSmoother instance
+        """
+        self.path = path.copy()  # Work on a copy of the path
+        self.obstacles = obstacles  # Set of obstacle coordinates
+        self.quadtree = obstacle_quadtree  # QuadTree for efficient spatial queries
+        self.min_clearance = min_clearance  # Minimum distance to maintain from obstacles
         
     def _distance(self, p1: Point, p2: Point) -> float:
-        """Calculate Euclidean distance between two points"""
+        """
+        Function Name: _distance
+        Input: p1, p2 (Point) - Two points
+        Output: float - Euclidean distance between points
+        Logic:
+        - Calculates the straight-line distance between two points
+        - Uses the Euclidean distance formula: sqrt((x2-x1)² + (y2-y1)²)
+        Example Call: dist = self._distance(point1, point2)
+        """
         return math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2)
     
     def _calculate_clearance(self, point: Point) -> float:
-        """Calculate the clearance (distance to nearest obstacle)"""
+        """
+        Function Name: _calculate_clearance
+        Input: point (Point) - The point to check
+        Output: float - Distance to the nearest obstacle
+        Logic:
+        - Iteratively checks for obstacles at increasing distances
+        - Uses quadtree for efficient spatial queries if available
+        - Returns exact minimum distance to nearest obstacle
+        Example Call: clearance = self._calculate_clearance(point)
+        """
         x, y = int(round(point.x)), int(round(point.y))
         
         # Start with a small radius and expand until we find obstacles
-        for radius in range(1, 100, 5):  # Check up to 100 units away
+        for radius in range(1, 100, 5):  # Check up to 100 units away in 5-unit increments
             if self.quadtree:
+                # Use quadtree for efficient lookup
                 nearby_obstacles = self.quadtree.query_radius(x, y, radius)
                 if nearby_obstacles:
                     # Calculate exact minimum distance
@@ -398,7 +601,7 @@ class EnhancedPathSmoother:
                         min_dist = min(min_dist, dist)
                     return min_dist
             else:
-                # Direct checking if no quadtree
+                # Direct checking if no quadtree (less efficient)
                 for dx in range(-radius, radius + 1):
                     for dy in range(-radius, radius + 1):
                         if (x + dx, y + dy) in self.obstacles:
@@ -408,61 +611,99 @@ class EnhancedPathSmoother:
         return 100.0
     
     def _check_path_clearance(self, path: List[Point]) -> bool:
-        """Check if all points in the path have sufficient clearance from obstacles"""
+        """
+        Function Name: _check_path_clearance
+        Input: path (List[Point]) - Path to check
+        Output: Boolean indicating if the path maintains sufficient clearance
+        Logic:
+        - Checks if all points in the path have sufficient clearance from obstacles
+        - Calculates clearance for each point and compares with minimum requirement
+        Example Call: is_safe = self._check_path_clearance(proposed_path)
+        """
         for point in path:
             if self._calculate_clearance(point) < self.min_clearance:
-                return False
-        return True
+                return False  # At least one point has insufficient clearance
+        return True  # All points have sufficient clearance
     
     def _generate_spline_path(self, points: List[Point], num_points: int) -> List[Point]:
-        """Generate a smooth spline path through the given points"""
+        """
+        Function Name: _generate_spline_path
+        Input: 
+            points (List[Point]) - Control points for the spline
+            num_points (int) - Number of points to generate along the spline
+        Output: List[Point] - A smooth spline path through the given points
+        Logic:
+        - Uses scipy's spline interpolation (splprep/splev)
+        - Creates a smooth curve passing through the input points
+        - Generates evenly distributed points along the curve
+        Example Call: smooth_path = self._generate_spline_path(control_points, 100)
+        """
         if len(points) < 3:
-            return points
+            return points  # Not enough points for effective spline interpolation
         
         # Extract x and y coordinates
         x = [p.x for p in points]
         y = [p.y for p in points]
         
         # Fit a spline
+        # s=0.0 means no smoothing, k=min(3, len(points)-1) sets degree of spline
         tck, u = splprep([x, y], s=0.0, k=min(3, len(points)-1))
         
         # Generate points along the spline
-        u_new = np.linspace(0, 1, num_points)
-        x_new, y_new = splev(u_new, tck)
+        u_new = np.linspace(0, 1, num_points)  # Distribute points evenly
+        x_new, y_new = splev(u_new, tck)  # Evaluate spline at these points
         
         # Create path of Points
         return [Point(x_new[i], y_new[i]) for i in range(len(x_new))]
     
     def _edge_collides(self, start: Point, end: Point) -> bool:
-        """Check if an edge between two points collides with obstacles"""
+        """
+        Function Name: _edge_collides
+        Input: start, end (Point) - Two points defining an edge
+        Output: Boolean indicating if the edge collides with obstacles
+        Logic:
+        - Samples multiple points along the edge
+        - Checks if any sample point has insufficient clearance from obstacles
+        - More samples for longer edges to ensure thorough checking
+        Example Call: collides = self._edge_collides(point1, point2)
+        """
         distance = self._distance(start, end)
-        steps = max(int(distance / 10), 5)
+        steps = max(int(distance / 10), 5)  # More steps for longer edges
         
-        for i in range(1, steps):  # Skip endpoints
-            t = i / steps
-            x = start.x + t * (end.x - start.x)
+        for i in range(1, steps):  # Skip endpoints (already checked)
+            t = i / steps  # Interpolation parameter [0, 1]
+            x = start.x + t * (end.x - start.x)  # Linear interpolation
             y = start.y + t * (end.y - start.y)
             
             # Check if point has sufficient clearance
             pt = Point(x, y)
             if self._calculate_clearance(pt) < self.min_clearance:
-                return True
+                return True  # Edge collides with an obstacle
         
-        return False
+        return False  # Edge is collision-free
     
     def _curvature_cost(self, path: List[Point]) -> float:
-        """Calculate a cost related to the curvature (smoothness) of the path"""
+        """
+        Function Name: _curvature_cost
+        Input: path (List[Point]) - Path to evaluate
+        Output: float - A cost metric related to path curvature
+        Logic:
+        - Calculates sum of angle changes along the path
+        - Higher values indicate sharper turns (less smooth path)
+        - Used to compare smoothness of different path options
+        Example Call: cost = self._curvature_cost(path)
+        """
         if len(path) < 3:
-            return 0.0
+            return 0.0  # Not enough points to measure curvature
         
         total_angle_change = 0.0
         
         for i in range(1, len(path) - 1):
-            # Calculate vectors
+            # Calculate vectors for adjacent segments
             v1 = (path[i].x - path[i-1].x, path[i].y - path[i-1].y)
             v2 = (path[i+1].x - path[i].x, path[i+1].y - path[i].y)
             
-            # Calculate angle between vectors
+            # Calculate angle between vectors using dot product
             dot_product = v1[0]*v2[0] + v1[1]*v2[1]
             mag1 = math.sqrt(v1[0]**2 + v1[1]**2)
             mag2 = math.sqrt(v2[0]**2 + v2[1]**2)
@@ -472,18 +713,28 @@ class EnhancedPathSmoother:
                 cosine = dot_product / (mag1 * mag2)
                 # Clamp cosine to avoid domain errors
                 cosine = max(-1.0, min(1.0, cosine))
-                angle = math.acos(cosine)
+                angle = math.acos(cosine)  # Angle in radians
                 total_angle_change += angle
         
-        return total_angle_change
+        return total_angle_change  # Higher value = more curvature = less smooth
     
     def _smooth_with_splines(self) -> List[Point]:
-        """Apply spline-based smoothing to create a natural-looking path"""
+        """
+        Function Name: _smooth_with_splines
+        Input: None (uses self.path)
+        Output: List[Point] - A spline-smoothed path
+        Logic:
+        - Applies spline-based smoothing to create a natural-looking path
+        - Generates a dense set of points along the spline
+        - Verifies that the smoothed path maintains clearance from obstacles
+        - Falls back to simpler waypoint reduction if spline creates collisions
+        Example Call: smooth_path = self._smooth_with_splines()
+        """
         if len(self.path) < 3:
-            return self.path
+            return self.path  # Not enough points for spline smoothing
         
         # Generate spline path with more points for smoothness
-        num_points = len(self.path) * 3
+        num_points = len(self.path) * 3  # Triple density for smoother curve
         smooth_path = self._generate_spline_path(self.path, num_points)
         
         # Check if the smoothed path maintains clearance from obstacles
@@ -491,7 +742,7 @@ class EnhancedPathSmoother:
             # Further check edges between points
             for i in range(len(smooth_path) - 1):
                 if self._edge_collides(smooth_path[i], smooth_path[i+1]):
-                    # Fall back to original path if edge collision detected
+                    # Fall back to waypoint reduction if edge collision detected
                     return self._reduce_waypoints()
             
             # Successful smooth path
@@ -501,16 +752,26 @@ class EnhancedPathSmoother:
         return self._reduce_waypoints()
     
     def _reduce_waypoints(self) -> List[Point]:
-        """Reduce waypoints while maintaining path clearance"""
+        """
+        Function Name: _reduce_waypoints
+        Input: None (uses self.path)
+        Output: List[Point] - A path with redundant waypoints removed
+        Logic:
+        - Reduces waypoints while maintaining path clearance
+        - Looks ahead as far as possible to skip redundant points
+        - May add midpoints for smoother turns when skipping many points
+        - Maintains obstacle clearance throughout the process
+        Example Call: reduced_path = self._reduce_waypoints()
+        """
         if len(self.path) <= 2:
-            return self.path
+            return self.path  # Already minimal
         
         result = [self.path[0]]  # Start with first point
         i = 0
         
         while i < len(self.path) - 1:
             # Look ahead as far as possible
-            j = len(self.path) - 1
+            j = len(self.path) - 1  # Start from the end
             valid_jump_found = False
             
             while j > i + 1:  # Must skip at least one point
@@ -542,9 +803,19 @@ class EnhancedPathSmoother:
         return result
     
     def _optimize_turning_angles(self, path: List[Point]) -> List[Point]:
-        """Optimize turning angles to make the path smoother"""
+        """
+        Function Name: _optimize_turning_angles
+        Input: path (List[Point]) - Path to optimize
+        Output: List[Point] - Path with smoother turning angles
+        Logic:
+        - Optimizes turning angles to make the path smoother
+        - Identifies sharp turns and tries to replace them with gentler curves
+        - Explores alternative points that maintain clearance but reduce turn angles
+        - Tests different radii and angles around sharp turn points
+        Example Call: smoother_path = self._optimize_turning_angles(path)
+        """
         if len(path) < 3:
-            return path
+            return path  # Not enough points to optimize turns
             
         result = [path[0]]  # Keep first point
         
@@ -568,7 +839,7 @@ class EnhancedPathSmoother:
                 cosine = dot_product / (mag1 * mag2)
                 # Clamp cosine to avoid domain errors
                 cosine = max(-1.0, min(1.0, cosine))
-                angle = math.acos(cosine) * 180 / math.pi
+                angle = math.acos(cosine) * 180 / math.pi  # Convert to degrees
                 
                 # If turn is too sharp, try to adjust
                 if angle > 30:  # Threshold for sharp turn in degrees
@@ -615,7 +886,18 @@ class EnhancedPathSmoother:
         return result
     
     def smooth(self) -> List[Point]:
-        """Apply a sequence of smoothing operations to create a high-quality path"""
+        """
+        Function Name: smooth
+        Input: None (uses self.path)
+        Output: List[Point] - A high-quality smoothed path
+        Logic:
+        - Applies a sequence of smoothing operations to create a high-quality path
+        - First reduces waypoints for a simpler base path
+        - Tries spline smoothing if path is complex enough
+        - Compares curvature cost to select the smoother option
+        - Falls back to waypoint reduction with angle optimization if needed
+        Example Call: smooth_path = smoother.smooth()
+        """
         # First reduce waypoints to create a simpler path
         reduced_path = self._reduce_waypoints()
         
@@ -635,6 +917,23 @@ class EnhancedPathSmoother:
         return self._optimize_turning_angles(reduced_path)
 
 class ImprovedPathPlanner:
+    """
+    Class Name: ImprovedPathPlanner
+    Input: 
+        start (Point) - Starting point
+        goal (Point) - Goal point
+        obstacles (Set[Tuple[int, int]]) - Set of obstacle coordinates
+        obstacle_quadtree (Optional[QuadTree]) - Quadtree for efficient obstacle lookups
+        max_iterations (int) - Maximum number of planning iterations
+        min_clearance (float) - Minimum clearance from obstacles
+    Output: A path planner with improved collision avoidance and smoothness
+    Logic:
+    - Implements a sampling-based path planning algorithm
+    - Uses adaptive sampling strategies and efficient graph search
+    - Prioritizes smoother paths with adequate obstacle clearance
+    - Employs various optimizations for better path quality
+    Example Creation: planner = ImprovedPathPlanner(start, goal, obstacles, quadtree)
+    """
     def __init__(
         self, 
         start: Point, 
@@ -645,28 +944,42 @@ class ImprovedPathPlanner:
         min_clearance: float = 4.5
     ):
         """
-        Enhanced path planner with improved collision avoidance and smoothness
+        Function Name: __init__
+        Input: 
+            start (Point) - Starting point
+            goal (Point) - Goal point
+            obstacles (Set[Tuple[int, int]]) - Set of obstacle coordinates
+            obstacle_quadtree (Optional[QuadTree]) - Quadtree for efficient obstacle lookups
+            max_iterations (int) - Maximum number of planning iterations
+            min_clearance (float) - Minimum clearance from obstacles
+        Output: Initialized ImprovedPathPlanner instance
+        Logic:
+        - Sets up start and goal nodes with initial costs
+        - Initializes algorithm parameters and data structures
+        - Creates critical samples in important areas of the search space
+        Example Call: Called automatically when creating ImprovedPathPlanner instance
         """
+        # Initialize start node with costs
         self.start = GraphNode(start)
         self.start.cost = 0
         self.start.g_cost = 0
         self.start.h_cost = self._distance(start, goal)
         self.start.f_cost = self.start.h_cost
         
-        self.goal = GraphNode(goal)
-        self.obstacles = obstacles
-        self.obstacle_quadtree = obstacle_quadtree
-        self.min_clearance = min_clearance
+        self.goal = GraphNode(goal)  # Initialize goal node
+        self.obstacles = obstacles  # Store obstacle set
+        self.obstacle_quadtree = obstacle_quadtree  # Store quadtree for efficient lookups
+        self.min_clearance = min_clearance  # Minimum safe distance from obstacles
 
         # Algorithm parameters
         self.samples_per_batch = 150  # More samples for better coverage
-        self.max_iterations = max_iterations
-        self.min_radius = 40
+        self.max_iterations = max_iterations  # Maximum iterations for planning
+        self.min_radius = 40  # Minimum radius for neighbor search
         
         # Adaptive neighbor radius parameters
-        self.neighbor_radius = 200
-        self.min_neighbor_radius = 50
-        self.radius_decay_factor = 0.98
+        self.neighbor_radius = 200  # Initial radius for finding neighbors
+        self.min_neighbor_radius = 50  # Minimum radius after decay
+        self.radius_decay_factor = 0.98  # Factor for gradually reducing radius
         
         # Search space bounds
         if obstacles:
@@ -677,15 +990,15 @@ class ImprovedPathPlanner:
             self.y_max = 1000
 
         # Initialize node sets
-        self.vertices = {self.start}
-        self.samples = {self.goal}
+        self.vertices = {self.start}  # Set of vertices in the graph
+        self.samples = {self.goal}  # Set of sample points
         self.queue = []  # Priority queue for edges
         
-        self.best_cost = float("inf")
-        self.solution_found = False
+        self.best_cost = float("inf")  # Best path cost found so far
+        self.solution_found = False  # Flag for solution status
         
         # For early termination
-        self.last_improvement = 0
+        self.last_improvement = 0  # Iteration of last path improvement
         
         # Add critical samples in important areas
         critical_samples = [
@@ -725,12 +1038,22 @@ class ImprovedPathPlanner:
                 self.samples.add(sample_node)
     
     def _calculate_clearance(self, point: Point) -> float:
-        """Calculate the distance to the nearest obstacle"""
+        """
+        Function Name: _calculate_clearance
+        Input: point (Point) - The point to check
+        Output: float - Distance to the nearest obstacle
+        Logic:
+        - Calculates the distance to the nearest obstacle
+        - Uses quadtree for efficient spatial queries if available
+        - Expands search radius until obstacles are found
+        Example Call: clearance = self._calculate_clearance(point)
+        """
         x, y = int(round(point.x)), int(round(point.y))
         
         # Start with a small radius and expand until we find obstacles
         for radius in range(1, 100, 5):  # Check up to 100 units away
             if self.obstacle_quadtree:
+                # Use quadtree for efficient spatial query
                 nearby_obstacles = self.obstacle_quadtree.query_radius(x, y, radius)
                 if nearby_obstacles:
                     # Calculate exact minimum distance
@@ -740,7 +1063,7 @@ class ImprovedPathPlanner:
                         min_dist = min(min_dist, dist)
                     return min_dist
             else:
-                # Direct checking if no quadtree
+                # Direct checking if no quadtree (less efficient)
                 for dx in range(-radius, radius + 1):
                     for dy in range(-radius, radius + 1):
                         if (x + dx, y + dy) in self.obstacles:
@@ -751,8 +1074,16 @@ class ImprovedPathPlanner:
     
     def _in_collision(self, point: Point, min_clearance: float = None) -> bool:
         """
-        Check if a point is in collision with obstacles
-        A point is in collision if it's closer than min_clearance to any obstacle
+        Function Name: _in_collision
+        Input: 
+            point (Point) - The point to check
+            min_clearance (float) - Minimum required clearance
+        Output: Boolean indicating if the point is in collision with obstacles
+        Logic:
+        - A point is in collision if it's closer than min_clearance to any obstacle
+        - First performs a quick boundary check
+        - Then calculates exact clearance and compares with minimum required
+        Example Call: collision = self._in_collision(point)
         """
         if min_clearance is None:
             min_clearance = self.min_clearance
@@ -761,15 +1092,23 @@ class ImprovedPathPlanner:
         
         # Quick boundary check
         if not (0 <= x <= self.x_max and 0 <= y <= self.y_max):
-            return True
+            return True  # Out of bounds = collision
         
+        # Check clearance against minimum required
         clearance = self._calculate_clearance(point)
         return clearance < min_clearance
 
     def _edge_collides(self, start: Point, end: Point) -> bool:
         """
-        Check if the edge between two points collides with obstacles
-        Uses adaptive resolution based on edge length
+        Function Name: _edge_collides
+        Input: start, end (Point) - Two points defining an edge
+        Output: Boolean indicating if the edge collides with obstacles
+        Logic:
+        - Uses adaptive resolution based on edge length
+        - Quickly checks endpoints first
+        - Samples points along the edge and checks each for collision
+        - More samples for longer edges to ensure thorough checking
+        Example Call: collides = self._edge_collides(point1, point2)
         """
         # Calculate distance and adaptive resolution
         distance = self._distance(start, end)
@@ -781,27 +1120,35 @@ class ImprovedPathPlanner:
 
         # Check points along the edge
         for i in range(1, steps - 1):  # Skip endpoints as they've been checked
-            t = i / steps
-            x = start.x + t * (end.x - start.x)
+            t = i / steps  # Interpolation parameter [0, 1]
+            x = start.x + t * (end.x - start.x)  # Linear interpolation
             y = start.y + t * (end.y - start.y)
             
             # Check with minimum clearance
             if self._in_collision(Point(x, y)):
-                return True
+                return True  # Collision detected
                 
-        return False
+        return False  # No collision detected
 
     def _adaptive_sampling(self):
         """
-        Implement adaptive sampling strategy for better coverage and smoother paths
+        Function Name: _adaptive_sampling
+        Input: None
+        Output: None (updates self.samples with new samples)
+        Logic:
+        - Implements adaptive sampling strategy for better coverage and smoother paths
+        - Strategy changes based on whether a solution has been found
+        - After solution: Focus on improving paths with ellipsoid and clearance-biased sampling
+        - Before solution: Mix of clearance-biased, uniform, and targeted sampling
+        Example Call: self._adaptive_sampling()
         """
         # If we've found a solution, focus on improving it
         if self.solution_found:
             # Mix between ellipsoid sampling (80%) and clearance-biased sampling (20%)
             if random.random() < 0.8:
-                self._sample_ellipsoid()
+                self._sample_ellipsoid()  # Sample within ellipsoid defined by best path
             else:
-                self._sample_with_clearance_bias()
+                self._sample_with_clearance_bias()  # Sample with bias toward clear areas
         else:
             # For initial exploration, mix strategies
             r = random.random()
@@ -814,8 +1161,14 @@ class ImprovedPathPlanner:
     
     def _sample_with_clearance_bias(self):
         """
-        Sample points with a bias toward areas with good clearance from obstacles
-        This helps create smoother paths that don't get too close to obstacles
+        Function Name: _sample_with_clearance_bias
+        Input: None
+        Output: None (updates self.samples with new samples)
+        Logic:
+        - Samples points with a bias toward areas with good clearance from obstacles
+        - Higher acceptance probability for points with better clearance
+        - Helps create smoother paths that don't get too close to obstacles
+        Example Call: self._sample_with_clearance_bias()
         """
         samples = set()
         attempts = 0
@@ -843,15 +1196,22 @@ class ImprovedPathPlanner:
             
             attempts += 1
         
-        self.samples.update(samples)
+        self.samples.update(samples)  # Add new samples to the set
     
     def _sample_near_challenging_areas(self):
         """
-        Sample points near obstacles and narrow passages to improve exploration
+        Function Name: _sample_near_challenging_areas
+        Input: None
+        Output: None (updates self.samples with new samples)
+        Logic:
+        - Samples points near obstacles and narrow passages to improve exploration
+        - 50% chance to sample near existing vertices, 50% chance for random sampling
+        - Helps the algorithm find paths through difficult areas
+        Example Call: self._sample_near_challenging_areas()
         """
         samples = set()
         attempts = 0
-        max_attempts = self.samples_per_batch * 10
+        max_attempts = self.samples_per_batch * 10  # Higher attempt limit for challenging areas
         
         while len(samples) < self.samples_per_batch and attempts < max_attempts:
             # Choose a random vertex as a reference point
@@ -881,17 +1241,25 @@ class ImprovedPathPlanner:
             
             attempts += 1
         
-        self.samples.update(samples)
+        self.samples.update(samples)  # Add new samples to the set
 
     def _sample_uniform(self):
         """
-        Generate uniformly distributed samples with minimum clearance from obstacles
+        Function Name: _sample_uniform
+        Input: None
+        Output: None (updates self.samples with new samples)
+        Logic:
+        - Generates uniformly distributed samples with minimum clearance from obstacles
+        - Provides broad coverage of the search space
+        - Only accepts points with sufficient clearance from obstacles
+        Example Call: self._sample_uniform()
         """
         samples = set()
         attempts = 0
-        max_attempts = self.samples_per_batch * 15
+        max_attempts = self.samples_per_batch * 15  # Higher attempt limit for quality samples
 
         while len(samples) < self.samples_per_batch and attempts < max_attempts:
+            # Generate random point within bounds
             x = random.uniform(0, self.x_max)
             y = random.uniform(0, self.y_max)
             point = Point(x, y)
@@ -906,33 +1274,44 @@ class ImprovedPathPlanner:
             
             attempts += 1
 
-        self.samples.update(samples)
+        self.samples.update(samples)  # Add new samples to the set
 
     def _sample_ellipsoid(self):
         """
-        Sample points within an ellipsoid defined by start, goal, and best cost
+        Function Name: _sample_ellipsoid
+        Input: None
+        Output: None (updates self.samples with new samples)
+        Logic:
+        - Samples points within an ellipsoid defined by start, goal, and best cost
+        - Concentrates samples in the region likely to contain better paths
+        - Helps improve an existing solution more efficiently
+        Example Call: self._sample_ellipsoid()
         """
+        # Calculate ellipsoid center
         center = Point(
             (self.start.point.x + self.goal.point.x) / 2,
             (self.start.point.y + self.goal.point.y) / 2,
         )
 
-        c_min = self._distance(self.start.point, self.goal.point)
-        x_radius = self.best_cost / 2
-        y_radius = math.sqrt(max(0, self.best_cost**2 - c_min**2)) / 2
+        # Calculate ellipsoid parameters
+        c_min = self._distance(self.start.point, self.goal.point)  # Minimum distance (direct)
+        x_radius = self.best_cost / 2  # Ellipsoid radius in x direction
+        y_radius = math.sqrt(max(0, self.best_cost**2 - c_min**2)) / 2  # y direction
 
         samples = set()
         attempts = 0
         max_attempts = self.samples_per_batch * 15  # More attempts for quality samples
 
         while len(samples) < self.samples_per_batch and attempts < max_attempts:
-            # Sample inside ellipse
+            # Sample inside ellipse using polar coordinates
             theta = random.uniform(0, 2 * math.pi)
-            r = math.sqrt(random.uniform(0, 1))
+            r = math.sqrt(random.uniform(0, 1))  # Square root for uniform distribution in circle
 
+            # Convert to cartesian coordinates within ellipsoid
             x = center.x + x_radius * r * math.cos(theta)
             y = center.y + y_radius * r * math.sin(theta)
             
+            # Boundary check
             if not (0 <= x <= self.x_max and 0 <= y <= self.y_max):
                 attempts += 1
                 continue
@@ -949,12 +1328,19 @@ class ImprovedPathPlanner:
             
             attempts += 1
 
-        self.samples.update(samples)
+        self.samples.update(samples)  # Add new samples to the set
 
     def _update_queue(self):
         """
-        Update priority queue with potentially useful edges,
-        prioritizing edges that lead to smoother paths
+        Function Name: _update_queue
+        Input: None
+        Output: None (updates self.queue with potential edges)
+        Logic:
+        - Updates priority queue with potentially useful edges
+        - Prioritizes edges that lead to smoother paths with good clearance
+        - Uses different strategies based on whether a solution has been found
+        - Edges are sorted by combined cost and smoothness factors
+        Example Call: self._update_queue()
         """
         self.queue = []  # Clear the queue
 
@@ -964,7 +1350,7 @@ class ImprovedPathPlanner:
             
             # Skip vertices that can't possibly lead to better solutions
             if vertex_to_goal > self.best_cost - vertex.cost:
-                continue
+                continue  # No way this vertex can lead to a better solution
 
             # Find suitable neighbors based on search state
             neighbors = []
@@ -975,7 +1361,7 @@ class ImprovedPathPlanner:
                     neighbors = sorted(
                         self.samples,
                         key=lambda s: self._distance(vertex.point, s.point)
-                    )[:k]
+                    )[:k]  # Get k nearest neighbors
             else:
                 # Use radius-based approach when exploring
                 for sample in self.samples:
@@ -997,12 +1383,20 @@ class ImprovedPathPlanner:
     
     def _evaluate_smoothness(self, vertex: GraphNode, sample: GraphNode) -> float:
         """
-        Evaluate how smooth the path would be if we added this edge
-        Lower values indicate smoother paths
+        Function Name: _evaluate_smoothness
+        Input: 
+            vertex (GraphNode) - Current vertex
+            sample (GraphNode) - Potential next point
+        Output: float - Smoothness metric [0-1], lower values indicate smoother path
+        Logic:
+        - Evaluates how smooth the path would be if we added this edge
+        - Calculates the angle between current segment and potential new segment
+        - Normalized to [0, 1] where 0 = perfectly straight, 1 = complete reversal
+        Example Call: smoothness = self._evaluate_smoothness(vertex, sample)
         """
         # If vertex has no parent, can't evaluate smoothness
         if vertex.parent is None:
-            return 0.0
+            return 0.0  # Default smoothness for initial edges
             
         # Calculate vectors
         v1 = (vertex.point.x - vertex.parent.point.x, 
@@ -1028,10 +1422,19 @@ class ImprovedPathPlanner:
     
     def _process_best_edge(self) -> bool:
         """
-        Process the best edge from the priority queue
+        Function Name: _process_best_edge
+        Input: None
+        Output: Boolean indicating if an edge was successfully processed
+        Logic:
+        - Gets the best edge from the priority queue
+        - Calculates new cost to end_node through start_node
+        - Updates node with better path if improvement found
+        - Handles transfer from samples to vertices
+        - Updates best cost and solution status when goal is reached
+        Example Call: success = self._process_best_edge()
         """
         if not self.queue:
-            return False
+            return False  # No edges to process
 
         # Get the best edge from the queue
         _, best_edge = heapq.heappop(self.queue)
@@ -1075,24 +1478,43 @@ class ImprovedPathPlanner:
                     
                     heapq.heappush(self.queue, (priority, (end_node, sample)))
 
-        return True
+        return True  # Successfully processed an edge
 
     @staticmethod
     def _distance(p1: Point, p2: Point) -> float:
-        """Calculate Euclidean distance between two points"""
+        """
+        Function Name: _distance
+        Input: p1, p2 (Point) - Two points
+        Output: float - Euclidean distance between points
+        Logic:
+        - Calculates the straight-line distance between two points
+        - Uses the Euclidean distance formula: sqrt((x2-x1)² + (y2-y1)²)
+        Example Call: dist = ImprovedPathPlanner._distance(point1, point2)
+        """
         return math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2)
 
     def _is_potentially_better_path(self, start: GraphNode, end: GraphNode) -> bool:
-        """Check if a path through 'start' to 'end' could potentially be better"""
+        """
+        Function Name: _is_potentially_better_path
+        Input: 
+            start (GraphNode) - Starting node
+            end (GraphNode) - Ending node
+        Output: Boolean indicating if a path through 'start' to 'end' could be better
+        Logic:
+        - Checks distance constraint (neighbor radius)
+        - Calculates potential path cost (start to end to goal)
+        - Returns true if this potential path could be better than current best
+        Example Call: could_improve = self._is_potentially_better_path(node1, node2)
+        """
         # Check distance constraint
         if self._distance(start.point, end.point) > self.neighbor_radius:
             return False
 
         # Calculate potential cost of path
         potential_cost = (
-            start.cost
-            + self._distance(start.point, end.point)
-            + self._distance(end.point, self.goal.point)
+            start.cost  # Cost to reach start
+            + self._distance(start.point, end.point)  # Cost from start to end
+            + self._distance(end.point, self.goal.point)  # Heuristic from end to goal
         )
 
         # Return true if this path is potentially better than current best
@@ -1100,14 +1522,21 @@ class ImprovedPathPlanner:
 
     def _edge_value(self, edge: Tuple[GraphNode, GraphNode]) -> float:
         """
-        Calculate edge priority value, accounting for both distance and clearance
+        Function Name: _edge_value
+        Input: edge (Tuple[GraphNode, GraphNode]) - Edge to evaluate
+        Output: float - Priority value for the edge (lower is better)
+        Logic:
+        - Calculates edge priority value, accounting for both distance and clearance
+        - Combines path cost (g + h) with clearance factor
+        - Prefers paths with better clearance from obstacles
+        Example Call: value = self._edge_value((node1, node2))
         """
         start, end = edge
         
         # Calculate basic costs
-        g_cost = start.cost + self._distance(start.point, end.point)
-        h_cost = self._distance(end.point, self.goal.point)
-        f_cost = g_cost + h_cost
+        g_cost = start.cost + self._distance(start.point, end.point)  # Cost from start
+        h_cost = self._distance(end.point, self.goal.point)  # Heuristic to goal
+        f_cost = g_cost + h_cost  # Total estimated cost
         
         # Calculate clearance factor - prefer paths with better clearance
         clearance = end.clearance if hasattr(end, 'clearance') else self._calculate_clearance(end.point)
@@ -1118,8 +1547,14 @@ class ImprovedPathPlanner:
 
     def plan(self) -> List[Point]:
         """
-        Run the path planning algorithm to find a smooth, collision-free path
-        with fallback mechanisms if no path is found
+        Function Name: plan
+        Input: None
+        Output: List[Point] - Planned path from start to goal
+        Logic:
+        - Runs the path planning algorithm with various clearance parameters
+        - Tries standard clearance first, then falls back to reduced values if needed
+        - Uses direct connection as last resort if possible
+        Example Call: path = planner.plan()
         """
         # First attempt with standard clearance
         path = self._plan_with_params(self.min_clearance)
@@ -1144,7 +1579,15 @@ class ImprovedPathPlanner:
         
     def _plan_with_params(self, clearance: float) -> List[Point]:
         """
-        Internal planning method with specified clearance parameter
+        Function Name: _plan_with_params
+        Input: clearance (float) - Clearance parameter to use for planning
+        Output: List[Point] - Planned path with specified clearance
+        Logic:
+        - Internal planning method with specified clearance parameter
+        - Initializes planning state and runs iterative path finding process
+        - Uses adaptive sampling and edge selection
+        - Applies enhanced path smoothing to the raw path
+        Example Call: path = self._plan_with_params(4.5)
         """
         # Save original clearance to restore later
         original_clearance = self.min_clearance
@@ -1171,7 +1614,7 @@ class ImprovedPathPlanner:
             
             # Stop if no improvement for a while
             if self.solution_found and (self.iterations - self.last_improvement > 200):
-                break
+                break  # Early termination if no improvement for a while
 
             # Update the queue if needed
             if not self.queue:
@@ -1187,13 +1630,13 @@ class ImprovedPathPlanner:
             
             # Process the best edge
             if not self._process_best_edge():
-                continue
+                continue  # No edge processed, continue to next iteration
 
             # Early exit if we find a good enough path
             if self.solution_found:
                 direct_dist = self._distance(self.start.point, self.goal.point)
                 if self.best_cost <= 1.2 * direct_dist:  # Relaxed criterion slightly
-                    break
+                    break  # Path is good enough
             
             self.iterations += 1
 
@@ -1211,13 +1654,23 @@ class ImprovedPathPlanner:
         return raw_path
 
     def _extract_path(self) -> List[Point]:
-        """Extract the path from goal to start by following parent pointers"""
+        """
+        Function Name: _extract_path
+        Input: None
+        Output: List[Point] - The planned path from start to goal
+        Logic:
+        - Extracts the path from goal to start by following parent pointers
+        - Reverses the list to get start-to-goal order
+        - Returns empty list if no solution found
+        Example Call: path = self._extract_path()
+        """
         if not self.solution_found:
-            return []
+            return []  # No path found
 
         path = []
         current = self.goal
         
+        # Follow parent pointers from goal back to start
         while current is not None:
             path.append(current.point)
             current = current.parent
@@ -1225,7 +1678,25 @@ class ImprovedPathPlanner:
         return list(reversed(path))  # Reverse to get start-to-goal order
 
 class RRTPlanner:
-    """Rapidly-exploring Random Tree (RRT) path planner"""
+    """
+    Class Name: RRTPlanner
+    Input: 
+        start (Point) - Starting point
+        goal (Point) - Goal point
+        obstacles (Set[Tuple[int, int]]) - Set of obstacle coordinates
+        obstacle_quadtree (Optional[QuadTree]) - Quadtree for efficient obstacle lookups
+        max_iterations (int) - Maximum iterations for path finding
+        step_size (float) - Maximum distance for each step in the tree
+        goal_sample_rate (float) - Probability of sampling the goal point directly
+        min_clearance (float) - Minimum clearance from obstacles
+    Output: A Rapidly-exploring Random Tree (RRT) path planner
+    Logic:
+    - Implements the RRT algorithm for path planning
+    - Grows a tree from start toward goal by random sampling
+    - Uses step-based expansion with collision checking
+    - Provides a fallback planning method for the main planner
+    Example Creation: planner = RRTPlanner(start, goal, obstacles, quadtree)
+    """
     
     def __init__(
         self, 
@@ -1239,27 +1710,32 @@ class RRTPlanner:
         min_clearance: float = 1.0
     ):
         """
-        Initialize RRT planner
-        
-        Args:
-            start: Starting point
-            goal: Goal point
-            obstacles: Set of obstacle coordinates (x,y)
-            obstacle_quadtree: Optional quadtree for efficient obstacle lookups
-            max_iterations: Maximum iterations to attempt path finding
-            step_size: Maximum distance for each step in the tree
-            goal_sample_rate: Probability of sampling the goal point directly
-            min_clearance: Minimum clearance from obstacles
+        Function Name: __init__
+        Input: 
+            start (Point) - Starting point
+            goal (Point) - Goal point
+            obstacles (Set[Tuple[int, int]]) - Set of obstacle coordinates
+            obstacle_quadtree (Optional[QuadTree]) - Quadtree for efficient obstacle lookups
+            max_iterations (int) - Maximum iterations for path finding
+            step_size (float) - Maximum distance for each step in the tree
+            goal_sample_rate (float) - Probability of sampling the goal point directly
+            min_clearance (float) - Minimum clearance from obstacles
+        Output: Initialized RRTPlanner instance
+        Logic:
+        - Initializes RRT planner with given parameters
+        - Sets up start and goal nodes and algorithm parameters
+        - Establishes search space bounds from obstacles
+        Example Call: Called automatically when creating RRTPlanner instance
         """
-        self.start = GraphNode(start)
-        self.goal = GraphNode(goal)
-        self.obstacles = obstacles
-        self.obstacle_quadtree = obstacle_quadtree
-        self.min_clearance = min_clearance
+        self.start = GraphNode(start)  # Start node
+        self.goal = GraphNode(goal)  # Goal node
+        self.obstacles = obstacles  # Set of obstacle coordinates
+        self.obstacle_quadtree = obstacle_quadtree  # QuadTree for efficient lookups
+        self.min_clearance = min_clearance  # Minimum clearance from obstacles
         
-        self.max_iterations = max_iterations
-        self.step_size = step_size
-        self.goal_sample_rate = goal_sample_rate
+        self.max_iterations = max_iterations  # Maximum iterations to attempt
+        self.step_size = step_size  # Maximum step size for tree growth
+        self.goal_sample_rate = goal_sample_rate  # Probability of sampling goal directly
         
         # Search space bounds
         if obstacles:
@@ -1270,69 +1746,126 @@ class RRTPlanner:
             self.y_max = 1000
             
         # Node tracking
-        self.vertices = [self.start]
+        self.vertices = [self.start]  # List of vertices in the tree
         self.goal_threshold = 20.0  # Distance to consider goal reached
     
     def _in_collision(self, point: Point) -> bool:
-        """Check if a point is in collision with obstacles"""
+        """
+        Function Name: _in_collision
+        Input: point (Point) - The point to check
+        Output: Boolean indicating if the point is in collision with obstacles
+        Logic:
+        - Checks if a point is in collision with obstacles
+        - Performs boundary check first
+        - Uses quadtree for efficient collision detection if available
+        - Falls back to direct checking otherwise
+        Example Call: collision = self._in_collision(point)
+        """
         x, y = int(round(point.x)), int(round(point.y))
-        radius = max(1, int(self.min_clearance))
+        radius = max(1, int(self.min_clearance))  # Radius to check for obstacles
         
         # Quick boundary check
         if not (0 <= x <= self.x_max and 0 <= y <= self.y_max):
-            return True
+            return True  # Out of bounds = collision
         
         # Use quadtree for efficient collision checking
         if self.obstacle_quadtree:
             nearby_obstacles = self.obstacle_quadtree.query_radius(x, y, radius)
-            return len(nearby_obstacles) > 0
+            return len(nearby_obstacles) > 0  # Collision if any obstacles found
         
         # Fallback to direct checking
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
                 if (x + dx, y + dy) in self.obstacles:
-                    return True
-        return False
+                    return True  # Collision detected
+        return False  # No collision detected
     
     def _edge_collides(self, start: Point, end: Point) -> bool:
-        """Check if an edge between two points collides with obstacles"""
+        """
+        Function Name: _edge_collides
+        Input: start, end (Point) - Two points defining an edge
+        Output: Boolean indicating if the edge collides with obstacles
+        Logic:
+        - Samples multiple points along the edge
+        - Checks if any sample point is in collision with obstacles
+        - More samples for longer edges to ensure thorough checking
+        Example Call: collides = self._edge_collides(point1, point2)
+        """
         distance = self._distance(start, end)
-        steps = max(int(distance / 10), 5)
+        steps = max(int(distance / 10), 5)  # More steps for longer edges
         
-        for i in range(1, steps):  # Skip endpoints
-            t = i / steps
-            x = start.x + t * (end.x - start.x)
+        for i in range(1, steps):  # Skip endpoints (checked separately)
+            t = i / steps  # Interpolation parameter [0, 1]
+            x = start.x + t * (end.x - start.x)  # Linear interpolation
             y = start.y + t * (end.y - start.y)
             
             if self._in_collision(Point(x, y)):
-                return True
+                return True  # Collision detected
         
-        return False
+        return False  # No collision detected
     
     @staticmethod
     def _distance(p1: Point, p2: Point) -> float:
-        """Calculate Euclidean distance between two points"""
+        """
+        Function Name: _distance
+        Input: p1, p2 (Point) - Two points
+        Output: float - Euclidean distance between points
+        Logic:
+        - Calculates the straight-line distance between two points
+        - Uses the Euclidean distance formula: sqrt((x2-x1)² + (y2-y1)²)
+        Example Call: dist = RRTPlanner._distance(point1, point2)
+        """
         return math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2)
     
     def _random_point(self) -> Point:
-        """Generate a random point in the search space"""
+        """
+        Function Name: _random_point
+        Input: None
+        Output: Point - A randomly generated point
+        Logic:
+        - Generates a random point in the search space
+        - Has a certain probability (goal_sample_rate) of returning the goal itself
+        - Otherwise generates uniform random coordinates within bounds
+        Example Call: point = self._random_point()
+        """
+        # Return goal directly with goal_sample_rate probability
         if random.random() < self.goal_sample_rate:
             return self.goal.point
         
+        # Otherwise generate random point within bounds
         x = random.uniform(0, self.x_max)
         y = random.uniform(0, self.y_max)
         return Point(x, y)
     
     def _nearest_vertex(self, point: Point) -> GraphNode:
-        """Find the nearest vertex in the tree to the given point"""
+        """
+        Function Name: _nearest_vertex
+        Input: point (Point) - Target point
+        Output: GraphNode - Nearest vertex in the tree
+        Logic:
+        - Finds the vertex in the tree nearest to the given point
+        - Uses the distance method to calculate distances
+        Example Call: nearest = self._nearest_vertex(random_point)
+        """
         return min(self.vertices, key=lambda v: self._distance(v.point, point))
     
     def _steer(self, from_point: Point, to_point: Point) -> Point:
-        """Steer from from_point toward to_point with limited step size"""
+        """
+        Function Name: _steer
+        Input: 
+            from_point (Point) - Starting point
+            to_point (Point) - Target point
+        Output: Point - New point after steering
+        Logic:
+        - Steers from from_point toward to_point with limited step size
+        - Returns to_point directly if within step_size
+        - Otherwise moves toward to_point by step_size distance
+        Example Call: new_point = self._steer(current, target)
+        """
         dist = self._distance(from_point, to_point)
         
         if dist <= self.step_size:
-            return to_point
+            return to_point  # Return target directly if within step size
         
         # Calculate new point at step_size distance from from_point toward to_point
         ratio = self.step_size / dist
@@ -1342,7 +1875,17 @@ class RRTPlanner:
         return Point(new_x, new_y)
     
     def plan(self) -> List[Point]:
-        """Run RRT algorithm to find a path"""
+        """
+        Function Name: plan
+        Input: None
+        Output: List[Point] - Planned path from start to goal
+        Logic:
+        - Runs RRT algorithm to find a path
+        - Iteratively grows a tree from start toward random points
+        - Checks for direct connections to goal periodically
+        - Extracts and returns the path if goal is reached
+        Example Call: path = rrt_planner.plan()
+        """
         start_time = time.time()
         time_limit = 2.0  # 2 seconds time limit
         
@@ -1366,7 +1909,7 @@ class RRTPlanner:
             
             # Skip if collision
             if self._in_collision(new_point) or self._edge_collides(nearest.point, new_point):
-                continue
+                continue  # Skip this iteration
             
             # Create new node
             new_node = GraphNode(new_point)
@@ -1403,15 +1946,38 @@ class RRTPlanner:
             
             path.append(self.start.point)
             
-            return list(reversed(path))
+            return list(reversed(path))  # Return path in start-to-goal order
         
         return []  # No path found
 
 class WayPoints(Node):
+    """
+    Class Name: WayPoints
+    Input: None
+    Output: A ROS2 node providing waypoint navigation service
+    Logic:
+    - Implements a service node for waypoint generation
+    - Provides path planning between start and goal points
+    - Uses terrain map and obstacle avoidance for safe path planning
+    - Transforms between pixel and world coordinates
+    Example Creation: waypoints = WayPoints()
+    """
     def __init__(self):
-        super().__init__("waypoints_service")
-        self.callback_group = ReentrantCallbackGroup()
-        self.current_waypoint = [500, 500]
+        """
+        Function Name: __init__
+        Input: None
+        Output: Initialized WayPoints node
+        Logic:
+        - Initializes ROS2 node for waypoint service
+        - Sets up callback group and service
+        - Loads map, package locations and coordinates
+        - Creates obstacle quadtree for efficient spatial queries
+        - Loads coordinate transformation models
+        Example Call: Called automatically when creating WayPoints instance
+        """
+        super().__init__("waypoints_service")  # Initialize ROS2 node
+        self.callback_group = ReentrantCallbackGroup()  # For parallel service callbacks
+        self.current_waypoint = [500, 500]  # Starting position (origin)
         self.package_whycon_location = {
             0: [500, 500], # Origin
             1: [224, 256],
@@ -1422,6 +1988,7 @@ class WayPoints(Node):
             6: [835, 931]
         }
         
+        # Define goal points for navigation
         self.goals = [
                 Point(self.package_whycon_location[4][0], 
                       self.package_whycon_location[4][1]),
@@ -1431,16 +1998,19 @@ class WayPoints(Node):
                       self.package_whycon_location[0][1]),  # Origin, used to come back
             ]
         
+        # Load map and obstacles
         self.obstacles = load_map("/home/salo/pico_ws2/2D_bit_map.png")
         self.obstacle_quadtree = self._create_obstacle_quadtree()
         
-        self.count = 0
-        self.path = []
+        self.count = 0  # Goal counter
+        self.path = []  # Current path
         
+        # Load coordinate transformation models
         self.model_x = joblib.load("src/swift_pico_hw/src/linear_model_x.pkl")
         self.model_y = joblib.load("src/swift_pico_hw/src/linear_model_y.pkl")
         self.scalar = joblib.load("src/swift_pico_hw/src/scaler_inverse.pkl")
         
+        # Create ROS2 service
         self.srv = self.create_service(
             GetWaypoints,
             "waypoints",
@@ -1449,10 +2019,19 @@ class WayPoints(Node):
         )
     
     def _create_obstacle_quadtree(self):
-        """Create a quadtree data structure for efficient obstacle collision checking"""
+        """
+        Function Name: _create_obstacle_quadtree
+        Input: None (uses self.obstacles)
+        Output: QuadTree - Quadtree for efficient obstacle collision checking
+        Logic:
+        - Creates a quadtree data structure for efficient spatial queries
+        - Finds the bounds of the space from obstacles
+        - Inserts obstacles into the quadtree
+        Example Call: qt = self._create_obstacle_quadtree()
+        """
         # Find bounds of space
         if not self.obstacles:
-            return None
+            return None  # No obstacles, no quadtree needed
             
         max_x = max(x for x, _ in self.obstacles)
         max_y = max(y for _, y in self.obstacles)
@@ -1467,16 +2046,44 @@ class WayPoints(Node):
         return qt
     
     def pixel_to_whycon(self, imgx, imgy):
-        points = np.array([[imgx, imgy]])
-        points_scaled = self.scalar.transform(points)
+        """
+        Function Name: pixel_to_whycon
+        Input: 
+            imgx, imgy (float) - Image/pixel coordinates
+        Output: List[float, float, float] - whycon coordinates [x, y, z]
+        Logic:
+        - Transforms pixel coordinates to whycon (world) coordinates
+        - Uses pre-trained models for the transformation
+        - First scales the input using a scaler model
+        - Then predicts x and y coordinates using separate linear models
+        - Uses fixed z height (26.0)
+        Example Call: world_coords = self.pixel_to_whycon(100, 200)
+        """
+        points = np.array([[imgx, imgy]])  # Create array of points
+        points_scaled = self.scalar.transform(points)  # Scale input points
 
+        # Predict coordinates using trained models
         goal_x = self.model_x.predict(points_scaled)
         goal_y = self.model_y.predict(points_scaled)
-        goal_z = 26.0
+        goal_z = 26.0  # Fixed height
         goal = [goal_x, goal_y, goal_z]
         return goal
 
     def waypoint_callback(self, request, response):
+        """
+        Function Name: waypoint_callback
+        Input: 
+            request (GetWaypoints.Request) - Service request
+            response (GetWaypoints.Response) - Service response
+        Output: GetWaypoints.Response - Response with waypoints
+        Logic:
+        - Handles ROS2 service calls for waypoint generation
+        - Plans path from current position to next goal
+        - Transforms path points to whycon coordinates
+        - Packages path into ROS2 pose message format
+        Example Call: Called automatically by ROS2 service framework
+        """
+        
         if not request.get_waypoints:
             self.get_logger().info("Request rejected")
             return response
@@ -1487,11 +2094,11 @@ class WayPoints(Node):
 
         if self.goals is None:
             self.get_logger().error("No goals available!")
-            return response
+            return response # No goals available
 
         # Process waypoints
         while not self.path:
-            start = Point(*self.current_waypoint)
+            start = Point(*self.current_waypoint) # Current position
             if self.count < len(self.goals):
                 goal = self.goals[self.count]
                 self.get_logger().info(f"Planning path from {start} to {goal}")
@@ -1499,7 +2106,7 @@ class WayPoints(Node):
                 # Plan new path - always calculate fresh path without caching
                 self.path_planning(start, goal, visualize=True)
         
-        self.count += 1
+        self.count += 1 # Move to next goal for future requests
         
         # Prepare response - handle interpolated path
         response.waypoints.poses = [Pose() for _ in range(len(self.path))]
@@ -1512,13 +2119,28 @@ class WayPoints(Node):
             response.waypoints.poses[i].position.z = float(point[2])
 
         self.get_logger().info(f"Waypoints ready: {len(self.path)} points")
-        self.current_waypoint = [self.path[-1].x, self.path[-1].y]
-        self.path = []
+        self.current_waypoint = [self.path[-1].x, self.path[-1].y] # Update current position
+        self.path = [] # Clear path after processing
 
         return response
 
     def path_planning(self, start, goal, visualize=False):
-        """Plan a path from start to goal with enhanced smoothness and collision avoidance"""
+        """
+        Function Name: path_planning
+        Input: 
+            start (Point) - Starting point
+            goal (Point) - Goal point
+            visualize (bool) - Whether to generate and display path visualization
+        Output: None (populates self.path with planned path)
+        Logic:
+        - Plans a path from start to goal with enhanced smoothness and collision avoidance
+        - First tries ImprovedPathPlanner as primary planning method
+        - Falls back to RRT planner if primary planner fails
+        - Runs multiple planners in parallel with different parameters
+        - Adds interpolation for smoother movement
+        - Visualizes the path if requested
+        Example Call: self.path_planning(start, goal, visualize=True)
+        """
         
         # First try improved path planner
         planner = ImprovedPathPlanner(start, goal, self.obstacles, self.obstacle_quadtree)
@@ -1579,18 +2201,23 @@ class WayPoints(Node):
                         
     def _try_rrt_planning(self, start, goal, min_clearance, max_iterations, step_size, visualize=False):
         """
-        Try RRT planning with given parameters.
-        
-        Args:
-            start (Point): Start point for the path
-            goal (Point): Goal point for the path
-            min_clearance (float): Minimum clearance from obstacles
-            max_iterations (int): Maximum iterations for the RRT algorithm
-            step_size (float): Step size for RRT exploration
-            visualize (bool): Whether to save path visualization to a file
+        Function Name: _try_rrt_planning
+        Input: 
+            start (Point) - Start point for the path
+            goal (Point) - Goal point for the path
+            min_clearance (float) - Minimum clearance from obstacles
+            max_iterations (int) - Maximum iterations for the RRT algorithm
+            step_size (float) - Step size for RRT exploration
+            visualize (bool) - Whether to save path visualization to a file
             
-        Returns:
-            List[Point]: The found path, or empty list if no path is found
+        Output: List[Point] - The found path, or empty list if no path is found
+        Logic:
+        - Creates and runs an RRT planner with specified parameters
+        - Applies post-processing to improve path quality
+        - Adds minimal interpolation for sparse paths
+        - Tries light smoothing for longer paths
+        - Generates visualization if requested
+        Example Call: path = self._try_rrt_planning(start, goal, 1.0, 5000, 20.0)
         """
         self.get_logger().info(f"Trying RRT with clearance={min_clearance}, iterations={max_iterations}, step={step_size}")
         
@@ -1654,37 +2281,82 @@ class WayPoints(Node):
                 
         except Exception as e:
             self.get_logger().error(f"Error in RRT planning: {str(e)}")
-            return []
+            return [] # Request flag not set
    
 def load_map(filepath: str) -> Set[Tuple[int, int]]:
-    """Load map image and extract obstacle coordinates"""
+    """
+    Function Name: load_map
+    Input: filepath (str) - Path to the map image file
+    Output: Set[Tuple[int, int]] - Set of obstacle coordinates
+    Logic:
+    - Loads a grayscale image from the given file path
+    - Extracts obstacle coordinates where pixels are black (value = 0)
+    - Converts the 2D image into a set of (x, y) coordinates for efficient lookup
+    - Raises ValueError if the image cannot be loaded
+    Example Call: obstacles = load_map("/path/to/map.png")
+    """
+    # Load grayscale image from file
     image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    
+    # Check if image was loaded successfully
     if image is None:
         raise ValueError(f"Failed to load image: {filepath}")
 
+    # Initialize empty set to store obstacle coordinates
     obstacles = set()
+    
+    # Get image dimensions
     height, width = image.shape
     
-    # Process the image more efficiently - only add black pixels as obstacles
+    # Iterate through each pixel in the image
     for y in range(height):
         for x in range(width):
-            if image[y, x] == 0:  # Black pixels are obstacles
-                obstacles.add((x, y))
-
+            # Add coordinates to obstacles set if pixel is black (0)
+            # In a binary map, black typically represents obstacles/walls
+            if image[y, x] == 0:  
+                obstacles.add((x, y))  # Store as (x, y) for Cartesian coordinates
+    
+    # Return the complete set of obstacle coordinates
     return obstacles
 
 def main():
+    """
+    Function Name: main
+    Input: None
+    Output: None
+    Logic:
+    - Entry point for the waypoint navigation node
+    - Initializes ROS2 client library, creates the node, and handles lifecycle
+    - Manages clean shutdown with proper resource cleanup
+    Example Call: Called when script is executed directly
+    """
+    # Initialize the ROS2 Python client library
+    # This must be called before any other ROS2 functionality is used
     rclpy.init()
+    
+    # Create an instance of the WayPoints node
+    # This initializes all services, parameters, and internal state
     waypoints = WayPoints()
 
     try:
+        # Enter the node's event loop
+        # This function blocks until the node is shut down
+        # It processes all callbacks, services, and timers
         rclpy.spin(waypoints)
+    
     except KeyboardInterrupt:
+        # Handle clean termination when user presses Ctrl+C
+        # Log the shutdown event for diagnostics
         waypoints.get_logger().info("KeyboardInterrupt, shutting down.\n")
+    
     finally:
+        # Ensure proper cleanup happens regardless of how we exit
+        # Destroy the node to clean up resources (services, topics, etc.)
         waypoints.destroy_node()
+        
+        # Shut down the ROS2 client library
+        # This frees all ROS2 resources and must be called at program end
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()
