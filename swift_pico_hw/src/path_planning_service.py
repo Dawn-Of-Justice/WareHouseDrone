@@ -70,7 +70,7 @@ def visualize_path(
     
     # Plot obstacles
     obstacle_x = [x for x, y in obstacles]
-    obstacle_y = [y for x, y in obstacles]
+    obstacle_y = [y for _, y in obstacles]
     plt.scatter(obstacle_x, obstacle_y, c='black', s=1, alpha=0.5, label='Obstacles')
     
     # Plot path
@@ -304,7 +304,6 @@ class GraphNode:
         if not isinstance(other, GraphNode):
             return NotImplemented
         return self.f_cost < other.f_cost or (self.f_cost == other.f_cost and self.h_cost < other.h_cost)
-
 
 class EnhancedPathSmoother:
     """Advanced path smoother that creates natural-looking, smooth paths"""
@@ -571,7 +570,6 @@ class EnhancedPathSmoother:
         
         # Otherwise use waypoint reduction with angle optimization
         return self._optimize_turning_angles(reduced_path)
-
 
 class ImprovedPathPlanner:
     def __init__(
@@ -1163,7 +1161,6 @@ class ImprovedPathPlanner:
 
         return list(reversed(path))  # Reverse to get start-to-goal order
 
-
 class WayPoints(Node):
     def __init__(self):
         super().__init__("waypoints_service")
@@ -1196,27 +1193,19 @@ class WayPoints(Node):
         self.count = 0
         self.path = []
         
-        # Create path cache for commonly used routes
-        self.path_cache = {}
-        
         self.model_x = joblib.load("src/swift_pico_hw/src/linear_model_x.pkl")
         self.model_y = joblib.load("src/swift_pico_hw/src/linear_model_y.pkl")
-        
         self.scalar = joblib.load("src/swift_pico_hw/src/scaler_inverse.pkl")
         
         self.package_whycon_location = {
             0: [500, 500], # Origin
             1: [224, 256],
             2: [690, 257],
-            3: [843, 587],
-            4: [161, 736],
+            3: [161, 736],
+            4: [843, 587],
             5: [554, 683],
             6: [835, 931]
         }
-        
-        # Initialize path cache for common routes (in background)
-        self.get_logger().info("Initializing path cache for common routes...")
-        #self._init_path_cache_in_background()
     
     def _create_obstacle_quadtree(self):
         """Create a quadtree data structure for efficient obstacle collision checking"""
@@ -1236,51 +1225,14 @@ class WayPoints(Node):
             
         return qt
     
-    def _init_path_cache_in_background(self):
-        """Initialize path cache for commonly used routes in a background thread"""
-        # Start a new thread to compute paths
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        executor.submit(self._compute_common_paths)
-    
-    def _compute_common_paths(self):
-        """Compute and cache paths between common locations"""
-        # Get list of locations
-        locations = list(self.package_whycon_location.values())
-        
-        # Calculate paths between origin and package locations (most common routes)
-        origin = self.package_whycon_location[0]
-        origin_point = Point(origin[0], origin[1])
-        
-        for pkg_id in range(1, len(self.package_whycon_location)):
-            pkg_loc = self.package_whycon_location[pkg_id]
-            pkg_point = Point(pkg_loc[0], pkg_loc[1])
-            
-            # Origin to package
-            self.get_logger().info(f"Precomputing path: Origin to Package {pkg_id}")
-            key = (0, pkg_id)
-            planner = ImprovedPathPlanner(origin_point, pkg_point, self.obstacles, 
-                                         self.obstacle_quadtree)
-            path = planner.plan()
-            if path:
-                self.path_cache[key] = path
-                self.get_logger().info(f"Cached path from Origin to Package {pkg_id}: {len(path)} waypoints")
-            
-            # Package to origin
-            self.get_logger().info(f"Precomputing path: Package {pkg_id} to Origin")
-            key = (pkg_id, 0)
-            planner = ImprovedPathPlanner(pkg_point, origin_point, self.obstacles,
-                                         self.obstacle_quadtree)
-            path = planner.plan()
-            if path:
-                self.path_cache[key] = path
-                self.get_logger().info(f"Cached path from Package {pkg_id} to Origin: {len(path)} waypoints")
-    
     def goal_point_receiver(self, msg):
         try:
             self.package_id = 4#int(msg.data)  # Used to get the goal points from the warehouse server
             self.goals = [
-                Point(self.package_whycon_location[self.package_id][0], 
-                      self.package_whycon_location[self.package_id][1]),
+                Point(self.package_whycon_location[2][0], 
+                      self.package_whycon_location[2][1]),
+                Point(self.package_whycon_location[3][0], 
+                      self.package_whycon_location[3][1]),
                 Point(self.package_whycon_location[0][0], 
                       self.package_whycon_location[0][1]),  # Origin, used to come back
             ]
@@ -1318,19 +1270,8 @@ class WayPoints(Node):
                 goal = self.goals[self.count]
                 self.get_logger().info(f"Planning path from {start} to {goal}")
                 
-                # Check if path is in cache
-                path_key = None
-                if self.count == 0:  # From current to package
-                    path_key = (0, self.package_id)
-                elif self.count == 1:  # From package to origin
-                    path_key = (self.package_id, 0)
-                
-                if path_key and path_key in self.path_cache:
-                    self.get_logger().info(f"Using cached path for {path_key}")
-                    self.path = self.path_cache[path_key]
-                else:
-                    # Plan new path
-                    self.path_planning(start, goal, visualize=True)
+                # Plan new path - always calculate fresh path without caching
+                self.path_planning(start, goal, visualize=True)
         
         self.count += 1
         
@@ -1397,6 +1338,7 @@ class WayPoints(Node):
     def _try_rrt_planning(self, start, goal, min_clearance, max_iterations, step_size):
         """Try RRT planning with given parameters"""
         # Define a lightweight RRT planner inline rather than importing
+
 class RRTPlanner:
     def __init__(
         self, 
@@ -1651,7 +1593,6 @@ class RRTPlanner:
         
         path.append(goal)
         return path
-
 
 def load_map(filepath: str) -> Set[Tuple[int, int]]:
     """Load map image and extract obstacle coordinates"""

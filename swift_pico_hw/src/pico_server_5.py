@@ -91,7 +91,7 @@ class WayPointServer(Node):
         self.cmd.rc_throttle = 1500
 
         # [roll, pitch, throttle]
-        self.Kp = [23.54, 26.15, 13.98] # .01
+        self.Kp = [25.54, 26.15, 13.98] # .01
         self.Ki = [.057, .069, .058] # .001
         self.Kd = [402.2, 402.2, 147.9] # .1
         
