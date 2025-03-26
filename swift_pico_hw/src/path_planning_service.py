@@ -1990,8 +1990,8 @@ class WayPoints(Node):
         
         # Define goal points for navigation
         self.goals = [
-                Point(self.package_whycon_location[1][0], 
-                      self.package_whycon_location[1][1]),
+                Point(self.package_whycon_location[4][0], 
+                      self.package_whycon_location[4][1]),
                 # Point(self.package_whycon_location[5][0], 
                 #       self.package_whycon_location[5][1]),
                 # Point(self.package_whycon_location[4][0], 

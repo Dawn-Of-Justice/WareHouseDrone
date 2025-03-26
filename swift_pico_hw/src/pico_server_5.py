@@ -162,12 +162,35 @@ class WayPointServer(Node):
         - Retrieves the timestamp from the message header and updates the dtime variable.
     Example Call:  obj.whycon_callback(msg)
         """    
-        
+     
     def whycon_callback(self, msg):
-
-        self.drone_position[0] = msg.poses[0].position.x
-        self.drone_position[1] = msg.poses[0].position.y
-        self.drone_position[2] = msg.poses[0].position.z
+        # Get raw position
+        raw_x = msg.poses[0].position.x
+        raw_y = msg.poses[0].position.y
+        raw_z = msg.poses[0].position.z
+        
+        # Initialize on first run
+        if not hasattr(self, 'prev_z'):
+            self.prev_z = raw_z
+            self.prev_x = raw_x
+            self.prev_y = raw_y
+        
+        # Fast 1D complementary filter - extremely low computational cost
+        # Alpha controls filtering strength (0.85-0.95 typical)
+        alpha = 0.5  # Higher = smoother but more lag
+        
+        # Filter z (altitude) readings with one simple calculation
+        filtered_z = alpha * self.prev_z + (1.0 - alpha) * raw_z
+        
+        # Update previous values for next iteration
+        self.prev_z = filtered_z
+        self.prev_x = raw_x  # We're not filtering x,y in this example
+        self.prev_y = raw_y
+        
+        # Update drone position
+        self.drone_position[0] = raw_x
+        self.drone_position[1] = raw_y
+        self.drone_position[2] = filtered_z
         self.dtime = msg.header.stamp.sec
 
     """
