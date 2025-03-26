@@ -47,7 +47,7 @@ class WayPointClient(Node):
         
         # Used to keep track of how many goals to visit
         self.current_package = 0
-        self.package_index = [1,5,4]  # First package index is 2
+        self.package_index = [2,3]  # First package index is 2
 
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info("service not available, waiting again...")

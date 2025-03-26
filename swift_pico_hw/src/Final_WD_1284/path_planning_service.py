@@ -1990,12 +1990,10 @@ class WayPoints(Node):
         
         # Define goal points for navigation
         self.goals = [
-                Point(self.package_whycon_location[1][0], 
-                      self.package_whycon_location[1][1]),
-                # Point(self.package_whycon_location[5][0], 
-                #       self.package_whycon_location[5][1]),
-                # Point(self.package_whycon_location[4][0], 
-                #       self.package_whycon_location[4][1]),
+                Point(self.package_whycon_location[2][0], 
+                      self.package_whycon_location[2][1]),
+                Point(self.package_whycon_location[3][0], 
+                      self.package_whycon_location[3][1]),
                 Point(self.package_whycon_location[0][0], 
                       self.package_whycon_location[0][1]),  # Origin, used to come back
             ]
@@ -2176,7 +2174,7 @@ class WayPoints(Node):
             
             # Add interpolated points for smoother movement, but only where needed
             original_path_length = len(self.path)
-            self.path = interpolate_path(self.path, points_per_segment=5, min_distance=1.5)
+            self.path = interpolate_path(self.path, points_per_segment=8, min_distance=1.5)
             self.get_logger().info(f"Path interpolated from {original_path_length} to {len(self.path)} waypoints")
             
             if visualize:

@@ -90,19 +90,11 @@ class WayPointServer(Node):
         self.cmd.rc_throttle = 1500
 
         # [roll, pitch, throttle]
-        # self.Kp = [25.04, 25.89, 13.98] # .01 # stupid value
-        # self.Ki = [.066, .067, .058] # .001
-        # self.Kd = [402, 402.9, 148.2] # .1
+        self.Kp = [25.24, 26.19, 13.98] # .01
+        self.Ki = [.066, .067, .058] # .001
+        self.Kd = [402, 402.9, 148.2] # .1
         
-        # self.Kp = [32.98, 25.84, 13.98] # .01 # okay value
-        # self.Ki = [.066, .067, .061] # .001
-        # self.Kd = [512.1, 492.9, 168.2] # .1
-        
-        self.Kp = [23.17, 23.83, 9.98] # .01
-        self.Ki = [.089, 0.090, .069] # .001
-        self.Kd = [314.1, 295.9, 136.3] # .1
-        
-        
+
         self.error = [0, 0, 0]
         self.prev_error = [0, 0, 0]
         self.sum_error = [0, 0, 0]
@@ -115,7 +107,7 @@ class WayPointServer(Node):
         # Error message
         self.pid_error = PIDError()
         
-        self.sample_time = 0.05 # in seconds
+        self.sample_time = 0.06 # in seconds
 
         self.command_pub = self.create_publisher(RCMessage, '/drone/rc_command', 10)
         self.pid_error_pub = self.create_publisher(PIDError, "/pid_error", 10)
@@ -183,9 +175,9 @@ class WayPointServer(Node):
             
     def altitude_set_pid(self, alt):
     
-        self.Kp[2] = alt.kp * 0.001
-        self.Ki[2] = alt.ki * 0.0001
-        self.Kd[2] = alt.kd * 0.01
+        self.Kp[2] = alt.kp * 0.01
+        self.Ki[2] = alt.ki * 0.001
+        self.Kd[2] = alt.kd * 0.1
     
     """
     Function Name: pitch_set_pid
@@ -200,9 +192,9 @@ class WayPointServer(Node):
 
     def pitch_set_pid(self, pitch):
         
-        self.Kp[1] = pitch.kp * 0.001
-        self.Ki[1] = pitch.ki * 0.0001
-        self.Kd[1] = pitch.kd * 0.01
+        self.Kp[1] = pitch.kp * 0.01
+        self.Ki[1] = pitch.ki * 0.001
+        self.Kd[1] = pitch.kd * 0.1
     
     """
     Function Name: roll_set_pid
@@ -217,9 +209,9 @@ class WayPointServer(Node):
 
     def roll_set_pid(self, roll):
         
-        self.Kp[0] = roll.kp * 0.001
-        self.Ki[0] = roll.ki * 0.0001
-        self.Kd[0] = roll.kd * 0.01
+        self.Kp[0] = roll.kp * 0.01
+        self.Ki[0] = roll.ki * 0.001
+        self.Kd[0] = roll.kd * 0.1
     
     """
     Function Name: send_request
@@ -455,7 +447,7 @@ class WayPointServer(Node):
             if self.time_inside_sphere > self.max_time_inside_sphere:
                 self.max_time_inside_sphere = self.time_inside_sphere
 
-            if goal_handle.request.is_goal_point and self.max_time_inside_sphere >= 2:
+            if goal_handle.request.is_goal_point and self.max_time_inside_sphere >= 3:
                 self.get_logger().info("Goal reached! Initiating request for next point...")
                 if goal_handle.request.avada_kedavra == True:
                     self.get_logger().info("Initiating landing sequence...")
