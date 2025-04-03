@@ -8,9 +8,3 @@ The challenge will be divided into two phases:
 - Simulation: Participants will use the Gazebo simulator to fly the drone and perform a preliminary run of the challenge.
 
 - Hardware: Those who successfully complete the simulation phase may advance to the second stage, where they will receive hardware to replicate their simulation work in a real-world environment.
-
-## Theme developers:
-- Arun P Madhu 
-- Bhavik Jain
-- Srivenkateshwar Iyer
-- Shakthi Magender
